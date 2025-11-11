@@ -1,10 +1,20 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import '../services/attendance_service.dart';
 import '../services/storage_service.dart';
 import '../services/log_service.dart';
 import '../models/attendance_log.dart';
 
-enum SSOStatus { disconnected, connecting, connected, error }
+enum SSOStatus {
+  disconnected(Icons.cancel, 'Déconnecté', Colors.grey),
+  connecting(Icons.sync, 'Connexion...', Colors.orange),
+  connected(Icons.check_circle, 'Connecté', Colors.green),
+  error(Icons.error, 'Erreur de connexion', Colors.red);
+
+  const SSOStatus(this.icon, this.label, this.color);
+  final IconData icon;
+  final String label;
+  final Color color;
+}
 
 class AppState extends ChangeNotifier {
   final StorageService _storageService = StorageService();
@@ -62,10 +72,12 @@ class AppState extends ChangeNotifier {
         _attendanceService = AttendanceService(studentId, password);
       }
 
-      final success = await _attendanceService!.tryLogin();
-      _ssoStatus = success ? SSOStatus.connected : SSOStatus.error;
+      final loginResult = await _attendanceService!.tryLogin();
+      _ssoStatus = loginResult == LoginResult.success
+          ? SSOStatus.connected
+          : SSOStatus.error;
       notifyListeners();
-      return success;
+      return loginResult == LoginResult.success;
     } catch (e) {
       _ssoStatus = SSOStatus.error;
       notifyListeners();
@@ -87,7 +99,7 @@ class AppState extends ChangeNotifier {
       final log = AttendanceLog(
         timestamp: DateTime.now(),
         result: result.name,
-        message: _getResultMessage(result),
+        message: result.message,
       );
       await _logService.addLog(log);
       await loadLogs();
@@ -131,20 +143,5 @@ class AppState extends ChangeNotifier {
 
   Future<void> logout() async {
     await clearCredentials();
-  }
-
-  String _getResultMessage(AttendanceResult result) {
-    switch (result) {
-      case AttendanceResult.success:
-        return 'Émargement réussi';
-      case AttendanceResult.alreadySignedIn:
-        return 'Déjà émargé';
-      case AttendanceResult.attendanceIdError:
-        return 'Erreur: ID d\'émargement introuvable';
-      case AttendanceResult.loginError:
-        return 'Erreur de connexion';
-      case AttendanceResult.unknownError:
-        return 'Erreur inconnue';
-    }
   }
 }

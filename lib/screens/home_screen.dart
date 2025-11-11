@@ -65,7 +65,7 @@ class HomeScreen extends StatelessWidget {
 
     if (!context.mounted) return;
 
-    final message = _getResultMessage(result);
+    final message = result.message;
     final color =
         result == AttendanceResult.success ||
             result == AttendanceResult.alreadySignedIn
@@ -75,21 +75,6 @@ class HomeScreen extends StatelessWidget {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
-  }
-
-  String _getResultMessage(AttendanceResult result) {
-    switch (result) {
-      case AttendanceResult.success:
-        return 'Émargement réussi !';
-      case AttendanceResult.alreadySignedIn:
-        return 'Déjà émargé pour ce créneau';
-      case AttendanceResult.attendanceIdError:
-        return 'Erreur: ID d\'émargement introuvable';
-      case AttendanceResult.loginError:
-        return 'Erreur de connexion SSO';
-      case AttendanceResult.unknownError:
-        return 'Erreur inconnue';
-    }
   }
 }
 
@@ -130,14 +115,12 @@ class _SSOStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (icon, text, color) = _getStatusInfo();
-
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            Icon(icon, color: color, size: 32),
+            Icon(status.icon, color: status.color, size: 32),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
@@ -147,7 +130,7 @@ class _SSOStatusCard extends StatelessWidget {
                     'Statut SSO',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  Text(text, style: TextStyle(color: color)),
+                  Text(status.label, style: TextStyle(color: status.color)),
                 ],
               ),
             ),
@@ -160,18 +143,5 @@ class _SSOStatusCard extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  (IconData, String, Color) _getStatusInfo() {
-    switch (status) {
-      case SSOStatus.connected:
-        return (Icons.check_circle, 'Connecté', Colors.green);
-      case SSOStatus.connecting:
-        return (Icons.sync, 'Connexion...', Colors.orange);
-      case SSOStatus.disconnected:
-        return (Icons.cancel, 'Déconnecté', Colors.grey);
-      case SSOStatus.error:
-        return (Icons.error, 'Erreur de connexion', Colors.red);
-    }
   }
 }
