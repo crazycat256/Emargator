@@ -69,7 +69,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         minimumSize: const Size(200, 200),
                       ),
                       child: state.isSigningAttendance
-                          ? const CircularProgressIndicator(color: Colors.white)
+                          ? const SizedBox(
+                              width: 64,
+                              height: 64,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 6,
+                              ),
+                            )
                           : const Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -161,7 +168,16 @@ class _SSOStatusCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            Icon(status.icon, color: status.color, size: 32),
+            status == SSOStatus.connecting
+                ? const SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                    ),
+                  )
+                : Icon(status.icon, color: status.color, size: 32),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
