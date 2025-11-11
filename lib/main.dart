@@ -70,6 +70,10 @@ class _MainTabScreenState extends State<MainTabScreen> {
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
 
+    if (!appState.isInitialized) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     if (!appState.hasAcceptedWarning) {
       return WarningScreen(
         onAccept: () async {
