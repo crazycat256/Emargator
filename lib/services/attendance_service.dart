@@ -24,7 +24,6 @@ class AttendanceService {
           allowRedirects: false,
         );
 
-        // If course page access fails, try to login again
         if (res1.statusCode != 200) {
           final loginResult = await tryLogin();
           if (loginResult != LoginResult.success) {
@@ -114,7 +113,6 @@ class AttendanceService {
         return AttendanceResult.parseError;
       }
     } catch (e) {
-      // Catch any network errors or unexpected errors
       return AttendanceResult.networkError;
     }
   }

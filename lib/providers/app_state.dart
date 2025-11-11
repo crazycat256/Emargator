@@ -24,15 +24,28 @@ class AppState extends ChangeNotifier {
   SSOStatus _ssoStatus = SSOStatus.disconnected;
   bool _isSigningAttendance = false;
   List<AttendanceLog> _logs = [];
+  bool _hasAcceptedWarning = false;
 
   SSOStatus get ssoStatus => _ssoStatus;
   bool get isSigningAttendance => _isSigningAttendance;
   List<AttendanceLog> get logs => _logs;
   bool get hasCredentials => _attendanceService != null;
+  bool get hasAcceptedWarning => _hasAcceptedWarning;
 
   Future<void> initialize() async {
     await loadLogs();
+    _hasAcceptedWarning = await _storageService.hasAcceptedWarning();
+    if (_hasAcceptedWarning) {
+      await _tryAutoConnect();
+    }
+    notifyListeners();
+  }
+
+  Future<void> acceptWarning() async {
+    await _storageService.setWarningAccepted();
+    _hasAcceptedWarning = true;
     await _tryAutoConnect();
+    notifyListeners();
   }
 
   Future<void> _tryAutoConnect() async {

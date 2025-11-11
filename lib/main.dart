@@ -6,6 +6,7 @@ import 'providers/app_state.dart';
 import 'screens/home_screen.dart';
 import 'screens/logs_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/warning_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,7 +15,7 @@ void main() async {
     await windowManager.ensureInitialized();
 
     const windowOptions = WindowOptions(
-      size: Size(450, 700),
+      size: Size(450, 715),
       center: true,
       backgroundColor: Colors.transparent,
       skipTaskbar: false,
@@ -67,6 +68,16 @@ class _MainTabScreenState extends State<MainTabScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final appState = context.watch<AppState>();
+
+    if (!appState.hasAcceptedWarning) {
+      return WarningScreen(
+        onAccept: () async {
+          await appState.acceptWarning();
+        },
+      );
+    }
+
     return Scaffold(
       body: _screens[_currentIndex],
       bottomNavigationBar: NavigationBar(
