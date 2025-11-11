@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../services/attendance_service.dart';
+import '../services/time_slot_service.dart';
+import 'dart:async';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback onNavigateToSettings;
@@ -14,11 +16,25 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _hasStoredCredentials = false;
+  Timer? _timer;
+  TimeSlotInfo _slotInfo = TimeSlotService.getCurrentSlotInfo();
 
   @override
   void initState() {
     super.initState();
     _loadCredentialsStatus();
+    // Mettre à jour les infos du créneau toutes les 30 secondes
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      setState(() {
+        _slotInfo = TimeSlotService.getCurrentSlotInfo();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadCredentialsStatus() async {
@@ -45,6 +61,11 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _SSOStatusCard(status: state.ssoStatus),
+                const SizedBox(height: 16),
+                _TimeSlotCard(
+                  slotInfo: _slotInfo,
+                  hasSignedInCurrentSlot: state.hasSignedInCurrentSlot(),
+                ),
                 const SizedBox(height: 24),
                 if (state.ssoStatus == SSOStatus.disconnected &&
                     !_hasStoredCredentials) ...[
@@ -58,7 +79,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: ElevatedButton(
                       onPressed:
                           state.isSigningAttendance ||
-                              state.ssoStatus != SSOStatus.connected
+                              state.ssoStatus != SSOStatus.connected ||
+                              !_slotInfo.isInSlot
                           ? null
                           : () => _signAttendance(context, state),
                       style: ElevatedButton.styleFrom(
@@ -196,6 +218,150 @@ class _SSOStatusCard extends StatelessWidget {
                 icon: const Icon(Icons.refresh),
                 onPressed: () => context.read<AppState>().connectSSO(),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TimeSlotCard extends StatelessWidget {
+  final TimeSlotInfo slotInfo;
+  final bool hasSignedInCurrentSlot;
+
+  const _TimeSlotCard({
+    required this.slotInfo,
+    required this.hasSignedInCurrentSlot,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Color cardColor;
+    IconData icon;
+    String title;
+    String subtitle;
+
+    if (slotInfo.isInSlot && slotInfo.currentSlot != null) {
+      cardColor = hasSignedInCurrentSlot
+          ? Colors.green.shade50
+          : Colors.blue.shade50;
+      icon = hasSignedInCurrentSlot
+          ? Icons.check_circle_outline
+          : Icons.access_time;
+      title = 'Créneau actuel';
+      subtitle = slotInfo.currentSlot!.getTimeRange();
+    } else {
+      cardColor = Colors.grey.shade100;
+      icon = Icons.schedule;
+      title = 'Hors créneau';
+      if (slotInfo.nextSlot != null && slotInfo.timeUntilNextSlot != null) {
+        subtitle =
+            'Prochain créneau dans ${TimeSlotService.formatDuration(slotInfo.timeUntilNextSlot!)}';
+      } else {
+        subtitle = 'Aucun créneau disponible';
+      }
+    }
+
+    return Card(
+      color: cardColor,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  icon,
+                  color: slotInfo.isInSlot
+                      ? (hasSignedInCurrentSlot ? Colors.green : Colors.blue)
+                      : Colors.grey,
+                  size: 28,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          color: Colors.grey.shade700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (slotInfo.isInSlot && hasSignedInCurrentSlot) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.check_circle,
+                      size: 16,
+                      color: Colors.green.shade700,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Déjà émargé pour ce créneau',
+                      style: TextStyle(
+                        color: Colors.green.shade700,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (!slotInfo.isInSlot) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.block, size: 16, color: Colors.orange.shade700),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Émargement désactivé hors créneau',
+                      style: TextStyle(
+                        color: Colors.orange.shade700,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),

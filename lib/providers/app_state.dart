@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/attendance_service.dart';
 import '../services/storage_service.dart';
 import '../services/log_service.dart';
+import '../services/time_slot_service.dart';
 import '../models/attendance_log.dart';
 
 enum SSOStatus {
@@ -151,6 +152,25 @@ class AppState extends ChangeNotifier {
   Future<void> clearLogs() async {
     await _logService.clearLogs();
     await loadLogs();
+  }
+
+  bool hasSignedInCurrentSlot() {
+    final slotInfo = TimeSlotService.getCurrentSlotInfo();
+    if (!slotInfo.isInSlot || slotInfo.currentSlot == null) {
+      return false;
+    }
+
+    final slot = slotInfo.currentSlot!;
+    final slotStart = slot.getStartTime(DateTime.now());
+    final slotEnd = slot.getEndTime(DateTime.now());
+
+    return _logs.any((log) {
+      final isInTimeRange =
+          log.timestamp.isAfter(slotStart) && log.timestamp.isBefore(slotEnd);
+      final isSuccess =
+          log.result == 'success' || log.result == 'alreadySignedIn';
+      return isInTimeRange && isSuccess;
+    });
   }
 
   Future<String?> getStudentId() async {

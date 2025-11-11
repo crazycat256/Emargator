@@ -129,10 +129,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               TextFormField(
                 controller: _studentIdController,
                 decoration: const InputDecoration(
-                  labelText: 'Identifiant étudiant',
+                  labelText: 'Numéro d\'étudiant',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.person),
-                  helperText: 'Votre numéro d\'étudiant',
+                  helperText: 'Votre numéro d\'étudiant (ex: e1234567)',
                 ),
                 validator: (value) =>
                     value?.isEmpty ?? true ? 'Champ requis' : null,
