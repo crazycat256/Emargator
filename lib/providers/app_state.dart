@@ -32,6 +32,10 @@ class AppState extends ChangeNotifier {
   bool get hasCredentials => _attendanceService != null;
   bool get hasAcceptedWarning => _hasAcceptedWarning;
 
+  Future<bool> hasStoredCredentials() async {
+    return await _storageService.hasCredentials();
+  }
+
   Future<void> initialize() async {
     await loadLogs();
     _hasAcceptedWarning = await _storageService.hasAcceptedWarning();
@@ -77,8 +81,11 @@ class AppState extends ChangeNotifier {
       if (_attendanceService == null) {
         final studentId = await _storageService.getStudentId();
         final password = await _storageService.getPassword();
-        if (studentId == null || password == null) {
-          _ssoStatus = SSOStatus.error;
+        if (studentId == null ||
+            password == null ||
+            studentId.isEmpty ||
+            password.isEmpty) {
+          _ssoStatus = SSOStatus.disconnected;
           notifyListeners();
           return false;
         }

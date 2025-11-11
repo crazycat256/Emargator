@@ -3,8 +3,30 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../services/attendance_service.dart';
 
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+class HomeScreen extends StatefulWidget {
+  final VoidCallback onNavigateToSettings;
+
+  const HomeScreen({super.key, required this.onNavigateToSettings});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  bool _hasStoredCredentials = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCredentialsStatus();
+  }
+
+  Future<void> _loadCredentialsStatus() async {
+    final hasStored = await context.read<AppState>().hasStoredCredentials();
+    setState(() {
+      _hasStoredCredentials = hasStored;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -12,6 +34,11 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('Émargator')),
       body: Consumer<AppState>(
         builder: (context, state, _) {
+          // Reload credentials status when SSO status changes
+          if (state.ssoStatus == SSOStatus.disconnected) {
+            _loadCredentialsStatus();
+          }
+
           return Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -20,8 +47,10 @@ class HomeScreen extends StatelessWidget {
                 _SSOStatusCard(status: state.ssoStatus),
                 const SizedBox(height: 24),
                 if (state.ssoStatus == SSOStatus.disconnected &&
-                    !state.hasCredentials) ...[
-                  const _NoCredentialsCard(),
+                    !_hasStoredCredentials) ...[
+                  _NoCredentialsCard(
+                    onNavigateToSettings: widget.onNavigateToSettings,
+                  ),
                   const SizedBox(height: 24),
                 ],
                 Expanded(
@@ -79,7 +108,9 @@ class HomeScreen extends StatelessWidget {
 }
 
 class _NoCredentialsCard extends StatelessWidget {
-  const _NoCredentialsCard();
+  final VoidCallback onNavigateToSettings;
+
+  const _NoCredentialsCard({required this.onNavigateToSettings});
 
   @override
   Widget build(BuildContext context) {
@@ -98,8 +129,18 @@ class _NoCredentialsCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Veuillez configurer vos identifiants SSO dans l\'onglet Paramètres pour pouvoir émarger.',
+              'Veuillez configurer vos identifiants SSO pour pouvoir émarger.',
               textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: onNavigateToSettings,
+              icon: const Icon(Icons.settings),
+              label: const Text('Paramètres'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
             ),
           ],
         ),
