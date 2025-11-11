@@ -10,9 +10,8 @@ class LogService {
     final logs = await getLogs();
     logs.insert(0, log);
 
-    // Keep only last 100 logs
-    if (logs.length > 100) {
-      logs.removeRange(100, logs.length);
+    if (logs.length > 1024) {
+      logs.removeRange(1024, logs.length);
     }
 
     final jsonList = logs.map((l) => l.toJson()).toList();

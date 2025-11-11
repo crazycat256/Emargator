@@ -32,12 +32,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<bool> saveCredentials(String studentId, String password) async {
-    // Si le mot de passe est vide, on garde l'ancien
     String finalPassword = password;
     if (password.isEmpty) {
       final existingPassword = await _storageService.getPassword();
       if (existingPassword == null) {
-        // Pas de mot de passe existant et nouveau mot de passe vide
         return false;
       }
       finalPassword = existingPassword;

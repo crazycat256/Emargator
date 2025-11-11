@@ -17,6 +17,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _hasExistingCredentials = false;
   bool _hasUnsavedChanges = false;
   String _initialStudentId = '';
+  bool _isInitialized = false;
 
   @override
   void initState() {
@@ -27,7 +28,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _checkForChanges() {
-    final hasChanges = _studentIdController.text != _initialStudentId ||
+    if (!_isInitialized) return;
+
+    final hasChanges =
+        _studentIdController.text != _initialStudentId ||
         _passwordController.text.isNotEmpty;
     if (hasChanges != _hasUnsavedChanges) {
       setState(() => _hasUnsavedChanges = hasChanges);
@@ -37,13 +41,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadExistingStudentId() async {
     final appState = context.read<AppState>();
     final studentId = await appState.getStudentId();
-    if (studentId != null) {
-      setState(() {
+    setState(() {
+      if (studentId != null) {
         _studentIdController.text = studentId;
         _initialStudentId = studentId;
         _hasExistingCredentials = true;
-      });
-    }
+      }
+      _isInitialized = true;
+    });
   }
 
   @override
@@ -73,7 +78,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           backgroundColor: Colors.green,
         ),
       );
-      // Clear password field after successful save
       _passwordController.clear();
       setState(() {
         _hasExistingCredentials = true;
@@ -104,7 +108,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Icon(Icons.settings, size: 80, color: Colors.blue),
               const SizedBox(height: 32),
               const Text(
-                'Identifiants SSO',
+                'Identifiants UBS',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
@@ -140,7 +144,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 24),
               ElevatedButton(
-                onPressed: (_isLoading || !_hasUnsavedChanges) ? null : _saveCredentials,
+                onPressed: (_isLoading || !_hasUnsavedChanges)
+                    ? null
+                    : _saveCredentials,
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.all(16),
                   backgroundColor: Colors.blue,
