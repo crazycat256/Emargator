@@ -324,23 +324,15 @@ class _ManualRedirectClient extends http.BaseClient {
 
 class _ManualStreamedResponse extends http.StreamedResponse {
   _ManualStreamedResponse(
-    Stream<List<int>> stream,
-    int statusCode, {
-    required Map<String, String> headers,
+    super.stream,
+    super.statusCode, {
+    required super.headers,
     required this.headersAll,
-    bool isRedirect = false,
-    http.BaseRequest? request,
-    bool persistentConnection = true,
-    String? reasonPhrase,
-  }) : super(
-          stream,
-          statusCode,
-          headers: headers,
-          isRedirect: isRedirect,
-          request: request,
-          persistentConnection: persistentConnection,
-          reasonPhrase: reasonPhrase,
-        );
+    super.isRedirect,
+    super.request,
+    super.persistentConnection,
+    super.reasonPhrase,
+  });
 
   final Map<String, List<String>> headersAll;
 }

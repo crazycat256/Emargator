@@ -18,6 +18,7 @@ class AppState extends ChangeNotifier {
   SSOStatus get ssoStatus => _ssoStatus;
   bool get isSigningAttendance => _isSigningAttendance;
   List<AttendanceLog> get logs => _logs;
+  bool get hasCredentials => _attendanceService != null;
 
   Future<void> initialize() async {
     await loadLogs();
@@ -31,8 +32,19 @@ class AppState extends ChangeNotifier {
   }
 
   Future<bool> saveCredentials(String studentId, String password) async {
-    await _storageService.saveCredentials(studentId, password);
-    _attendanceService = AttendanceService(studentId, password);
+    // Si le mot de passe est vide, on garde l'ancien
+    String finalPassword = password;
+    if (password.isEmpty) {
+      final existingPassword = await _storageService.getPassword();
+      if (existingPassword == null) {
+        // Pas de mot de passe existant et nouveau mot de passe vide
+        return false;
+      }
+      finalPassword = existingPassword;
+    }
+
+    await _storageService.saveCredentials(studentId, finalPassword);
+    _attendanceService = AttendanceService(studentId, finalPassword);
     return await connectSSO();
   }
 
@@ -108,11 +120,19 @@ class AppState extends ChangeNotifier {
     await loadLogs();
   }
 
-  Future<void> logout() async {
+  Future<String?> getStudentId() async {
+    return await _storageService.getStudentId();
+  }
+
+  Future<void> clearCredentials() async {
     await _storageService.clearCredentials();
     _attendanceService = null;
     _ssoStatus = SSOStatus.disconnected;
     notifyListeners();
+  }
+
+  Future<void> logout() async {
+    await clearCredentials();
   }
 
   String _getResultMessage(AttendanceResult result) {

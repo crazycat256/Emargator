@@ -9,19 +9,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Émargator'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await context.read<AppState>().logout();
-              if (!context.mounted) return;
-              Navigator.of(context).pushReplacementNamed('/login');
-            },
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Émargator')),
       body: Consumer<AppState>(
         builder: (context, state, _) {
           return Padding(
@@ -31,6 +19,11 @@ class HomeScreen extends StatelessWidget {
               children: [
                 _SSOStatusCard(status: state.ssoStatus),
                 const SizedBox(height: 24),
+                if (state.ssoStatus == SSOStatus.disconnected &&
+                    !state.hasCredentials) ...[
+                  const _NoCredentialsCard(),
+                  const SizedBox(height: 24),
+                ],
                 Expanded(
                   child: Center(
                     child: ElevatedButton(
@@ -57,15 +50,6 @@ class HomeScreen extends StatelessWidget {
                               ],
                             ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                OutlinedButton.icon(
-                  onPressed: () => Navigator.of(context).pushNamed('/logs'),
-                  icon: const Icon(Icons.history),
-                  label: const Text('Voir l\'historique'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.all(16),
                   ),
                 ),
               ],
@@ -106,6 +90,36 @@ class HomeScreen extends StatelessWidget {
       case AttendanceResult.unknownError:
         return 'Erreur inconnue';
     }
+  }
+}
+
+class _NoCredentialsCard extends StatelessWidget {
+  const _NoCredentialsCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: Colors.orange.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            const Icon(Icons.info_outline, color: Colors.orange, size: 48),
+            const SizedBox(height: 16),
+            const Text(
+              'Identifiants non configurés',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Veuillez configurer vos identifiants SSO dans l\'onglet Paramètres pour pouvoir émarger.',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
