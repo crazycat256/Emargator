@@ -55,6 +55,7 @@ class TimeSlotService {
     TimeSlot(startHour: 8, startMinute: 0, endHour: 9, endMinute: 30),
     TimeSlot(startHour: 9, startMinute: 45, endHour: 11, endMinute: 15),
     TimeSlot(startHour: 11, startMinute: 30, endHour: 13, endMinute: 0),
+    TimeSlot(startHour: 13, startMinute: 0, endHour: 14, endMinute: 30),
     TimeSlot(startHour: 14, startMinute: 45, endHour: 16, endMinute: 15),
     TimeSlot(startHour: 16, startMinute: 30, endHour: 18, endMinute: 0),
     TimeSlot(startHour: 18, startMinute: 15, endHour: 19, endMinute: 45),

@@ -11,6 +11,7 @@ Emargator automatise le processus d'émargement en ligne sur Moodle. L'applicati
 - 8h00 - 9h30
 - 9h45 - 11h15
 - 11h30 - 13h00
+- 13h00 - 14h30
 - 14h45 - 16h15
 - 16h30 - 18h00
 - 18h15 - 19h45
