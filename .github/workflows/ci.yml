@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, master, DevOps ]
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       release:
@@ -20,15 +20,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Run gitleaks scan
         uses: zricethezav/gitleaks-action@v2
-        with:
-          args: "--report-format=json --report-path=gitleaks-report.json"
       - name: Upload gitleaks report
         uses: actions/upload-artifact@v4
         with:
           name: gitleaks-report
-          path: gitleaks-report.json
+          path: results.sarif
 
   build_apk:
     name: Build APK
