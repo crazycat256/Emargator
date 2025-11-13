@@ -6,6 +6,12 @@ Application mobile d'émargement automatique pour les cours de l'ENSIBS.
 
 Emargator automatise le processus d'émargement en ligne sur Moodle. L'application se connecte automatiquement aux créneaux d'émargement définis par l'université et enregistre votre présence aux cours, éliminant ainsi la procédure manuelle répétitive.
 
+<p align="center">
+   <img src="/assets/readme/main-screen.png" alt="Ecran principal" width="30%" style="margin-right: 2%;" />
+   <img src="/assets/readme/history-screen.png" alt="Historique" width="30%" style="margin-right: 2%;" />
+   <img src="/assets/readme/settings-screen.png" alt="Paramètres" width="30%" />
+</p>
+
 **Créneaux d'émargement** (du lundi au vendredi) :
 
 - 8h00 - 9h30
