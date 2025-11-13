@@ -23,8 +23,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadCredentialsStatus();
-    // Mettre à jour les infos du créneau toutes les 30 secondes
-    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() {
         _slotInfo = TimeSlotService.getCurrentSlotInfo();
       });
@@ -50,7 +49,6 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(title: const Text('Émargator')),
       body: Consumer<AppState>(
         builder: (context, state, _) {
-          // Reload credentials status when SSO status changes
           if (state.ssoStatus == SSOStatus.disconnected) {
             _loadCredentialsStatus();
           }
