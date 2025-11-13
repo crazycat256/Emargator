@@ -8,9 +8,9 @@ Emargator automatise le processus d'émargement en ligne sur Moodle. L'applicati
 
 <p align="center">
    <img src="/assets/readme/main-screen.png" alt="Ecran principal" width="30%" />
-   &nbsp;
+   &nbsp;&nbsp;&nbsp;
    <img src="/assets/readme/history-screen.png" alt="Historique" width="30%" />
-   &nbsp;
+   &nbsp;&nbsp;&nbsp;
    <img src="/assets/readme/settings-screen.png" alt="Paramètres" width="30%" />
 </p>
 
