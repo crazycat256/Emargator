@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       release:
-        description: 'Create a release? Set to "true" to publish.'
+        description: 'For create a release? Set to "true" to publish.'
         required: false
         default: 'false'
       version:
