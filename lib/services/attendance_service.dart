@@ -67,13 +67,23 @@ class AttendanceService {
         attendanceId = cachedAttendanceId!;
       }
 
-      final res2 = await session.get(
+      var res2 = await session.get(
         '$_baseUrl/mod/attendance/view.php?id=$attendanceId',
         allowRedirects: false,
       );
 
       if (res2.statusCode != 200) {
-        return AttendanceResult.attendancePageError;
+        final loginResult = await tryLogin();
+        if (loginResult != LoginResult.success) {
+          return AttendanceResult.loginError;
+        }
+        res2 = await session.get(
+          '$_baseUrl/mod/attendance/view.php?id=$attendanceId',
+          allowRedirects: false,
+        );
+        if (res2.statusCode != 200) {
+          return AttendanceResult.attendancePageError;
+        }
       }
 
       try {
