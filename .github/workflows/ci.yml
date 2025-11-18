@@ -150,14 +150,20 @@ jobs:
           )
           $outputDir = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
           if (-not $outputDir) {
-            throw "Unable to find compiled Windows runner directory. Checked: $($candidates -join ', ')"
+            throw "Unable to locate Windows release output directory."
           }
-          $destinationDir = Split-Path -Parent $outputDir
-          $destination = Join-Path $destinationDir "emargator-windows.zip"
+
+          $destination = "build/windows/emargator-windows.zip"
+          $destDir = Split-Path -Parent $destination
+          if (-not (Test-Path $destDir)) {
+            New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+          }
+
           if (Test-Path $destination) {
-            Remove-Item $destination
+            Remove-Item $destination -Force
           }
-          Compress-Archive -Path (Join-Path $outputDir '*') -DestinationPath $destination
+
+          Compress-Archive -Path (Join-Path $outputDir '*') -DestinationPath $destination -Force
           "zip_path=$destination" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
@@ -165,8 +171,8 @@ jobs:
           name: windows-executable
           path: ${{ steps.package_windows.outputs.zip_path }}
 
-  publish_release:
-    name: Publish release (conditional)
+  prepare_release:
+    name: Prepare release metadata
     runs-on: ubuntu-latest
     needs:
       - build_apk
@@ -174,7 +180,75 @@ jobs:
       - build_windows
     if: >-
       (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true') ||
-      (github.event_name == 'push' && contains(github.event.head_commit.message, 'release'))
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    outputs:
+      release_tag: ${{ steps.release_meta.outputs.release_tag }}
+      should_release: ${{ steps.release_meta.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install yq
+        run: |
+          set -euo pipefail
+            curl -sL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /tmp/yq
+            chmod +x /tmp/yq
+          sudo install -m 0755 /tmp/yq /usr/local/bin/yq
+          yq --version
+      - name: Derive release version from pubspec
+        id: release_meta
+        env:
+          MANUAL_VERSION_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version != '' && github.event.inputs.version || '' }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+
+          if [ -n "${MANUAL_VERSION_INPUT}" ]; then
+            raw_version="${MANUAL_VERSION_INPUT#v}"
+          else
+            raw_version=$(yq -r '.version // ""' pubspec.yaml)
+            raw_version=${raw_version%%+*}
+          fi
+
+          raw_version=$(echo "${raw_version}" | tr -d '[:space:]')
+          raw_version=${raw_version#v}
+
+          if [ -z "${raw_version}" ]; then
+            echo "Unable to determine app version from pubspec.yaml" >&2
+            exit 1
+          fi
+
+          release_tag="v${raw_version}"
+          should_release="true"
+          reason="ready"
+
+          if git rev-parse --verify --quiet "$release_tag" > /dev/null; then
+            should_release="false"
+            reason="tag-exists"
+          fi
+
+          latest_tag=$(git tag -l 'v*' | sort -V | tail -n1 || true)
+          if [ "$should_release" = "true" ] && [ -n "$latest_tag" ]; then
+            latest_version="${latest_tag#v}"
+            highest=$(printf '%s\n%s\n' "$latest_version" "$raw_version" | sort -V | tail -n1)
+            if [ "$highest" != "$raw_version" ]; then
+              should_release="false"
+              reason="not-newer"
+            fi
+          fi
+
+          echo "Release decision: tag=$release_tag should_release=$should_release reason=$reason"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
+
+  publish_release:
+    name: Publish release (conditional)
+    runs-on: ubuntu-latest
+    needs:
+      - prepare_release
+    if: ${{ needs.prepare_release.outputs.should_release == 'true' }}
+    env:
+      RELEASE_TAG: ${{ needs.prepare_release.outputs.release_tag }}
     steps:
       - uses: actions/checkout@v4
       - name: Download APK artifact
@@ -192,38 +266,15 @@ jobs:
         with:
           name: windows-executable
           path: release_artifacts/windows
-      - name: Determine release tag
-        id: determine_tag
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ -n "${{ github.event.inputs.version }}" ]; then
-              echo "RELEASE_TAG=${{ github.event.inputs.version }}" >> $GITHUB_ENV
-              echo "release_tag=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-            else
-              echo "No version provided for workflow_dispatch. Exiting." >&2
-              exit 1
-            fi
-          else
-            commit_msg=$(jq -r .head_commit.message < "$GITHUB_EVENT_PATH")
-            echo "Commit message: $commit_msg"
-            version=$(echo "$commit_msg" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
-            if [ -n "$version" ]; then
-              echo "RELEASE_TAG=$version" >> $GITHUB_ENV
-              echo "release_tag=$version" >> $GITHUB_OUTPUT
-            else
-              echo "No version tag found in commit message. Exiting." >&2
-              exit 1
-            fi
-          fi
       - name: Create GitHub Release
         id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ steps.determine_tag.outputs.release_tag }}
-          release_name: ${{ steps.determine_tag.outputs.release_tag }}
-          body: "Release ${{ steps.determine_tag.outputs.release_tag }} generated by CI"
+          tag_name: ${{ env.RELEASE_TAG }}
+          release_name: ${{ env.RELEASE_TAG }}
+          body: "Release ${{ env.RELEASE_TAG }} generated by CI"
           draft: false
           prerelease: false
       - name: Upload APK to release
@@ -233,7 +284,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: release_artifacts/android/app-release.apk
-          asset_name: emargator-${{ steps.determine_tag.outputs.release_tag }}.apk
+          asset_name: emargator-${{ env.RELEASE_TAG }}.apk
           asset_content_type: application/vnd.android.package-archive
       - name: Upload Linux binary to release
         uses: actions/upload-release-asset@v1
@@ -242,7 +293,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: release_artifacts/linux/emargator-linux.tar.gz
-          asset_name: emargator-${{ steps.determine_tag.outputs.release_tag }}-linux.tar.gz
+          asset_name: emargator-${{ env.RELEASE_TAG }}-linux.tar.gz
           asset_content_type: application/gzip
       - name: Upload Windows executable to release
         uses: actions/upload-release-asset@v1
@@ -251,5 +302,5 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: release_artifacts/windows/emargator-windows.zip
-          asset_name: emargator-${{ steps.determine_tag.outputs.release_tag }}-windows.zip
+          asset_name: emargator-${{ env.RELEASE_TAG }}-windows.zip
           asset_content_type: application/zip
