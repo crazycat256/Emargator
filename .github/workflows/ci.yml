@@ -71,7 +71,7 @@ jobs:
           fi
           echo "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > android/app/upload-keystore.jks
           {
-            echo "storeFile=app/upload-keystore.jks"
+            echo "storeFile=upload-keystore.jks"
             echo "storePassword=${ANDROID_KEYSTORE_PASSWORD}"
             echo "keyAlias=${ANDROID_KEY_ALIAS}"
             echo "keyPassword=${ANDROID_KEY_PASSWORD}"
