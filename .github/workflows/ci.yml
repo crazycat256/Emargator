@@ -13,6 +13,16 @@ on:
         description: 'Release version tag, e.g. v1.2.3 (required when release=true for manual run)'
         required: false
         default: ''
+  workflow_call:
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: true
+      ANDROID_KEYSTORE_PASSWORD:
+        required: true
+      ANDROID_KEY_ALIAS:
+        required: true
+      ANDROID_KEY_PASSWORD:
+        required: true
 
 jobs:
   security_scan:
@@ -47,6 +57,28 @@ jobs:
           flutter-version: '3.38.0'
           channel: 'stable'
           architecture: x64
+      # actionlint: disable=expr
+      - name: Configure Android signing
+        run: |
+          ANDROID_KEYSTORE_BASE64='${{ secrets.ANDROID_KEYSTORE_BASE64 }}'
+          ANDROID_KEYSTORE_PASSWORD='${{ secrets.ANDROID_KEYSTORE_PASSWORD }}'
+          ANDROID_KEY_ALIAS='${{ secrets.ANDROID_KEY_ALIAS }}'
+          ANDROID_KEY_PASSWORD='${{ secrets.ANDROID_KEY_PASSWORD }}'
+          set -euo pipefail
+          if [ -z "${ANDROID_KEYSTORE_BASE64}" ] || [ -z "${ANDROID_KEYSTORE_PASSWORD}" ] || [ -z "${ANDROID_KEY_ALIAS}" ] || [ -z "${ANDROID_KEY_PASSWORD}" ]; then
+            echo "Android signing secrets are not configured. Skipping release keystore setup and falling back to debug signing." >&2
+            exit 0
+          fi
+          echo "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > android/app/upload-keystore.jks
+          {
+            echo "storeFile=app/upload-keystore.jks"
+            echo "storePassword=${ANDROID_KEYSTORE_PASSWORD}"
+            echo "keyAlias=${ANDROID_KEY_ALIAS}"
+            echo "keyPassword=${ANDROID_KEY_PASSWORD}"
+          } > android/key.properties
+          chmod 600 android/app/upload-keystore.jks
+          chmod 600 android/key.properties
+      # actionlint: enable=expr
       - name: Flutter pub get
         run: flutter pub get
       - name: Build release APK
