@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'warning_details_screen.dart';
-import 'developer_screen.dart';
 
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
@@ -61,19 +60,6 @@ class _AboutScreenState extends State<AboutScreen> {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (context) => const WarningDetailsScreen(),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.code),
-            title: const Text('Développeur'),
-            subtitle: const Text('crazycat256'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const DeveloperScreen(),
                 ),
               );
             },
