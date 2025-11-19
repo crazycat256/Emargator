@@ -136,6 +136,8 @@ jobs:
         with:
           flutter-version: '3.38.0'
           channel: 'stable'
+      - name: Install MSVC Build Tools
+        uses: microsoft/setup-msbuild@v2
       - name: Flutter pub get
         run: flutter pub get
       - name: Build Windows release
