@@ -56,7 +56,7 @@ class WarningMessage extends StatelessWidget {
                         title: 'Fonctionnement',
                         content:
                             'Cette application automatise la connexion à Moodle et simule le clic sur le lien d\'émargement. '
-                            'Elle peut facilement être cassée par une mise à jour de Moodle.',
+                            'Elle peut facilement être cassée par une mise à jour du SSO de l\'UBS ou de Moodle.',
                       ),
                       const SizedBox(height: 16),
                       Container(
@@ -78,7 +78,7 @@ class WarningMessage extends StatelessWidget {
                                 ),
                                 SizedBox(width: 8),
                                 Text(
-                                  'MAUVAISE UTILISATION',
+                                  'PRÉSENCE AUX COURS',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -89,7 +89,8 @@ class WarningMessage extends StatelessWidget {
                             ),
                             const SizedBox(height: 8),
                             const Text(
-                              'Émarger à un cours auquel vous n\'êtes pas réellement présent peut vous exposer à :',
+                              'N\'émargez qu\'aux cours auxquels vous êtes réellement présent !\n'
+                                  'Émarger à un cours auquel vous n\'êtes pas présent peut être considéré comme de la fraude et vous expose à :',
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Colors.black87,
@@ -114,6 +115,14 @@ class WarningMessage extends StatelessWidget {
                             ),
                           ],
                         ),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildSection(
+                          title: 'Affiliation',
+                          content:
+                          'Cette application n’est ni affiliée, ni approuvée, ni soutenue de quelque manière que ce soit par l\'ENSIBS, l\'UBS ou Moodle. '
+                              'Toutes les marques, logos et noms de produits cités appartiennent à leurs propriétaires respectifs. '
+                              'L’utilisation de cette application se fait sous votre seule responsabilité.'
                       ),
                       const SizedBox(height: 16),
                       _buildSection(
