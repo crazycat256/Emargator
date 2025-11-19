@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class StorageService {
@@ -6,17 +8,33 @@ class StorageService {
   static const _keyPassword = 'password';
   static const _keyWarningAccepted = 'warning_accepted';
 
+  Future<String?> _readOrReset(String key) async {
+    try {
+      return await _storage.read(key: key);
+    } on PlatformException catch (error) {
+      await _clearCorruptedStorage(error);
+      return null;
+    }
+  }
+
+  Future<void> _clearCorruptedStorage(PlatformException error) async {
+    debugPrint(
+      'StorageService: clearing secure storage after error: ${error.message}',
+    );
+    await _storage.deleteAll();
+  }
+
   Future<void> saveCredentials(String studentId, String password) async {
     await _storage.write(key: _keyStudentId, value: studentId);
     await _storage.write(key: _keyPassword, value: password);
   }
 
   Future<String?> getStudentId() async {
-    return await _storage.read(key: _keyStudentId);
+    return await _readOrReset(_keyStudentId);
   }
 
   Future<String?> getPassword() async {
-    return await _storage.read(key: _keyPassword);
+    return await _readOrReset(_keyPassword);
   }
 
   Future<bool> hasCredentials() async {
@@ -31,7 +49,7 @@ class StorageService {
   }
 
   Future<bool> hasAcceptedWarning() async {
-    final value = await _storage.read(key: _keyWarningAccepted);
+    final value = await _readOrReset(_keyWarningAccepted);
     return value == 'true';
   }
 
