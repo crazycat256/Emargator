@@ -2,6 +2,9 @@
 
 Application mobile d'émargement automatique pour les cours de l'ENSIBS.
 
+> [!WARNING]  
+> Cette application est encore en cours de développement, et bien qu'elle soit fonctionnelle, elle peut contenir des bugs ou des fonctionnalités incomplètes. Utilisez-la à vos propres risques.
+
 ## Description
 
 Emargator automatise le processus d'émargement en ligne sur Moodle. L'application se connecte automatiquement aux créneaux d'émargement définis par l'université et enregistre votre présence aux cours, éliminant ainsi la procédure manuelle répétitive.
