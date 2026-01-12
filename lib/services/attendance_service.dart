@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'utils.dart';
@@ -7,11 +10,12 @@ const String _loginUrl =
     'https://cas.univ-ubs.fr/login?service=https%3A%2F%2Fidp.univ-ubs.fr%2Fidp%2FAuthn%2FExternal%3Fconversation%3De1s1%26entityId%3Dhttps%3A%2F%2Fmoodle.univ-ubs.fr%2Fshibboleth';
 
 class AttendanceService {
-  AttendanceService(this.studentId, this.password, {this.cachedAttendanceId});
+  AttendanceService(this.studentId, this.password, {this.cachedAttendanceId, this.onError});
 
   final String studentId;
   final String password;
   String? cachedAttendanceId;
+  final Function(String context, Object error, StackTrace? stackTrace)? onError;
 
   final Session session = Session();
 
@@ -60,7 +64,8 @@ class AttendanceService {
 
           cachedAttendanceId = match.group(1);
           attendanceId = cachedAttendanceId!;
-        } catch (e) {
+        } catch (e, stackTrace) {
+          onError?.call('SignAttendance - Parse ID', e, stackTrace);
           return AttendanceResult.parseError;
         }
       } else {
@@ -118,12 +123,18 @@ class AttendanceService {
           return AttendanceResult.success;
         }
 
+        onError?.call('SignAttendance - Ensure Success', 'Invalid success msg $msg', null);
         return AttendanceResult.unknownError;
-      } catch (e) {
+      } catch (e, stackTrace) {
+        onError?.call('SignAttendance - Parse Page', e, stackTrace);
         return AttendanceResult.parseError;
       }
-    } catch (e) {
-      return AttendanceResult.networkError;
+    } catch (e, stackTrace) {
+      if (e is SocketException || e is TimeoutException) {
+        return AttendanceResult.networkError;
+      }
+      onError?.call('SignAttendance - Other', e, stackTrace);
+      return AttendanceResult.unknownError;
     }
   }
 
@@ -166,10 +177,12 @@ class AttendanceService {
 
         await session.post(action, args, allowRedirects: true);
         return LoginResult.success;
-      } catch (e) {
+      } catch (e, stackTrace) {
+        onError?.call('TryLogin - Parse', e, stackTrace);
         return LoginResult.parseError;
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      onError?.call('TryLogin - Network/Other', e, stackTrace);
       return LoginResult.networkError;
     }
   }
