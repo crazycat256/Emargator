@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/attendance_service.dart';
 import '../services/storage_service.dart';
 import '../services/log_service.dart';
@@ -31,6 +32,9 @@ class AppState extends ChangeNotifier {
   List<ErrorReport> _errors = [];
   bool _hasAcceptedWarning = false;
   bool _isInitialized = false;
+  Set<String> _moodleSignedKeys = {};
+  bool _moodleDataLoaded = false;
+  static const _moodleCacheKey = 'moodle_signed_keys';
 
   SSOStatus get ssoStatus => _ssoStatus;
   bool get isSigningAttendance => _isSigningAttendance;
@@ -39,6 +43,8 @@ class AppState extends ChangeNotifier {
   bool get hasCredentials => _attendanceService != null;
   bool get hasAcceptedWarning => _hasAcceptedWarning;
   bool get isInitialized => _isInitialized;
+  bool get moodleDataLoaded => _moodleDataLoaded;
+  Set<String> get moodleSignedKeys => _moodleSignedKeys;
 
   Future<bool> hasStoredCredentials() async {
     return await _storageService.hasCredentials();
@@ -47,6 +53,7 @@ class AppState extends ChangeNotifier {
   Future<void> initialize() async {
     await loadLogs();
     await loadErrors();
+    await _loadMoodleCache();
     _hasAcceptedWarning = await _storageService.hasAcceptedWarning();
     _isInitialized = true;
     if (_hasAcceptedWarning) {
@@ -80,7 +87,11 @@ class AppState extends ChangeNotifier {
       }
 
       await _storageService.saveCredentials(studentId, finalPassword);
-      _attendanceService = AttendanceService(studentId, finalPassword, onError: recordError);
+      _attendanceService = AttendanceService(
+        studentId,
+        finalPassword,
+        onError: recordError,
+      );
       return await connectSSO();
     } catch (e, stackTrace) {
       await recordError('AppState.saveCredentials', e, stackTrace);
@@ -104,13 +115,20 @@ class AppState extends ChangeNotifier {
           notifyListeners();
           return false;
         }
-        _attendanceService = AttendanceService(studentId, password, onError: recordError);
+        _attendanceService = AttendanceService(
+          studentId,
+          password,
+          onError: recordError,
+        );
       }
 
       final loginResult = await _attendanceService!.tryLogin();
       _ssoStatus = loginResult == LoginResult.success
           ? SSOStatus.connected
           : SSOStatus.error;
+      if (loginResult == LoginResult.success) {
+        fetchMoodleAttendance(); // fire-and-forget
+      }
       notifyListeners();
       return loginResult == LoginResult.success;
     } catch (e, stackTrace) {
@@ -140,6 +158,11 @@ class AppState extends ChangeNotifier {
       await _logService.addLog(log);
       await loadLogs();
 
+      if (result == AttendanceResult.success ||
+          result == AttendanceResult.alreadySignedIn) {
+        fetchMoodleAttendance(); // refresh Moodle data
+      }
+
       return result;
     } catch (e, stackTrace) {
       final log = AttendanceLog(
@@ -167,7 +190,11 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> recordError(String contextName, Object error, StackTrace? stackTrace) async {
+  Future<void> recordError(
+    String contextName,
+    Object error,
+    StackTrace? stackTrace,
+  ) async {
     await _errorService.logError(contextName, error, stackTrace);
     await loadErrors();
   }
@@ -199,6 +226,41 @@ class AppState extends ChangeNotifier {
           log.result == 'success' || log.result == 'alreadySignedIn';
       return isInTimeRange && isSuccess;
     });
+  }
+
+  /// Check whether a time slot on a given date was self-recorded on Moodle.
+  bool isSlotSignedOnMoodle(DateTime date, TimeSlot slot) {
+    final key =
+        '${date.year}-${date.month}-${date.day}_${slot.startHour}:${slot.startMinute}';
+    return _moodleSignedKeys.contains(key);
+  }
+
+  /// Fetch the list of self-recorded attendance sessions from Moodle.
+  Future<void> fetchMoodleAttendance() async {
+    if (_attendanceService == null) return;
+    try {
+      final sessions = await _attendanceService!.fetchSignedSessions();
+      _moodleSignedKeys = sessions.map((s) => s.key).toSet();
+      _moodleDataLoaded = true;
+      await _saveMoodleCache();
+      notifyListeners();
+    } catch (e, stackTrace) {
+      await recordError('AppState.fetchMoodleAttendance', e, stackTrace);
+    }
+  }
+
+  Future<void> _loadMoodleCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_moodleCacheKey);
+    if (list != null) {
+      _moodleSignedKeys = list.toSet();
+      _moodleDataLoaded = true;
+    }
+  }
+
+  Future<void> _saveMoodleCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_moodleCacheKey, _moodleSignedKeys.toList());
   }
 
   Future<String?> getStudentId() async {

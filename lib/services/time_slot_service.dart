@@ -31,6 +31,10 @@ class TimeSlot {
     return '${_formatTime(startHour, startMinute)} - ${_formatTime(endHour, endMinute)}';
   }
 
+  /// Unique key for this slot on a given date, e.g. "2026-3-10_8:0".
+  String keyForDate(DateTime date) =>
+      '${date.year}-${date.month}-${date.day}_$startHour:$startMinute';
+
   String _formatTime(int hour, int minute) {
     return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
   }
@@ -60,6 +64,20 @@ class TimeSlotService {
     TimeSlot(startHour: 16, startMinute: 30, endHour: 18, endMinute: 0),
     TimeSlot(startHour: 18, startMinute: 15, endHour: 19, endMinute: 45),
   ];
+
+  static List<TimeSlot> get slots => _slots;
+
+  /// Return time slots that overlap with the given lesson time range.
+  static List<TimeSlot> getOverlappingSlots(
+    DateTime lessonStart,
+    DateTime lessonEnd,
+  ) {
+    return _slots.where((slot) {
+      final slotStart = slot.getStartTime(lessonStart);
+      final slotEnd = slot.getEndTime(lessonStart);
+      return lessonStart.isBefore(slotEnd) && lessonEnd.isAfter(slotStart);
+    }).toList();
+  }
 
   static TimeSlotInfo getCurrentSlotInfo([DateTime? now]) {
     now ??= DateTime.now();

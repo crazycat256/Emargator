@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../providers/planning_state.dart';
 import 'about_screen.dart';
+import 'group_selection_screen.dart';
+import 'keyword_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -187,10 +190,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
               ],
+
+              // ── Planning / Group section ──
+              const SizedBox(height: 40),
+              const Divider(),
+              const SizedBox(height: 16),
+              const Text(
+                'Planning & Émargement',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              _buildPlanningSection(context),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPlanningSection(BuildContext context) {
+    final planning = context.watch<PlanningState>();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Current group
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.group, color: Colors.blue),
+            title: Text(
+              planning.hasGroup
+                  ? '${planning.selectedFormation!.name} — ${planning.selectedYear!.name}'
+                  : 'Aucun groupe sélectionné',
+            ),
+            subtitle: planning.hasGroup
+                ? Text(planning.selectedGroup!.name)
+                : const Text('Appuyez pour choisir votre groupe de TP'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const GroupSelectionScreen()),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Keywords
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.filter_alt_outlined, color: Colors.blue),
+            title: const Text('Mots-clés à ignorer'),
+            subtitle: Text(
+              planning.keywords.isEmpty
+                  ? 'Aucun mot-clé configuré'
+                  : planning.keywords.join(', '),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const KeywordSettingsScreen()),
+            ),
+          ),
+        ),
+        if (planning.hasGroup) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await planning.clearGroup();
+            },
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Supprimer le groupe'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.red,
+              padding: const EdgeInsets.all(12),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
