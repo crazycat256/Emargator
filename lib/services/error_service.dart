@@ -31,7 +31,7 @@ class ErrorService {
         deviceModel = '${macInfo.model} ${macInfo.osRelease}';
       } else if (Platform.isWindows) {
         final windowsInfo = await _deviceInfo.windowsInfo;
-        deviceModel = '${windowsInfo.productName}';
+        deviceModel = windowsInfo.productName;
       }
     } catch (e) {
       deviceModel = 'Unknown ($e)';

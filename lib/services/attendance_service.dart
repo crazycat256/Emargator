@@ -117,9 +117,10 @@ class AttendanceService {
         }
 
         final msg = alert.text.trim();
-        if (msg.startsWith(
-          'Your attendance in this session has been recorded.',
-        )) {
+        if (
+          msg.contains('Your attendance in this session has been recorded.') ||
+          msg.contains('Votre présence à cette session a été enregistrée.'))
+        {
           return AttendanceResult.success;
         }
 
