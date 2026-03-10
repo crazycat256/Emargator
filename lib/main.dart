@@ -46,8 +46,8 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) {
             final state = PlanningState();
-            AttendanceNotificationService.init().then((_) {
-              AttendanceNotificationService.requestPermission();
+            AttendanceNotificationService.init().then((_) async {
+              await AttendanceNotificationService.requestPermission();
               state.initialize();
             });
             return state;

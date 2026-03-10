@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import '../services/time_slot_service.dart';
@@ -152,7 +153,11 @@ class AttendanceNotificationService {
     required Set<String> signedSlotKeys,
   }) async {
     if (!_initialized) return;
-    await _plugin.cancelAll();
+    try {
+      await _plugin.cancelAll();
+    } catch (e) {
+      debugPrint('cancelAll failed (continuing): $e');
+    }
 
     int id = 0;
     final now = DateTime.now();
@@ -261,7 +266,7 @@ class AttendanceNotificationService {
       tzTime,
       details,
       payload: payload,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: null,

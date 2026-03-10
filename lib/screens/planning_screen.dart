@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -11,8 +12,30 @@ import '../services/time_slot_service.dart';
 import 'group_selection_screen.dart';
 import 'keyword_settings_screen.dart';
 
-class PlanningScreen extends StatelessWidget {
+class PlanningScreen extends StatefulWidget {
   const PlanningScreen({super.key});
+
+  @override
+  State<PlanningScreen> createState() => _PlanningScreenState();
+}
+
+class _PlanningScreenState extends State<PlanningScreen> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Rebuild every 60 seconds so the red now-indicator moves
+    _timer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
   static const _pixelsPerHour = 55.0;
   static const _firstHour = 8;
