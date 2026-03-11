@@ -235,7 +235,7 @@ class AttendanceNotificationService {
             id: id,
             title: timing.urgent
                 ? '🚨 Émargement URGENT'
-                : '⚠️ Émargement requis',
+                : 'Émargement requis',
             body: body,
             scheduledTime: notifTime,
             playSound: timing.playSound,
