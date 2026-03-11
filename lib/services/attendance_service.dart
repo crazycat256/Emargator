@@ -215,8 +215,12 @@ class AttendanceService {
       final cells = row.querySelectorAll('td');
       if (cells.length < 5) continue;
 
-      final remarkCell = cells[4];
-      if (!remarkCell.text.contains('Self-recorded')) continue;
+      // Check Status column (index 2) for "Présent" / "Present"
+      final statusCell = cells[2];
+      final statusText = statusCell.text.trim().toLowerCase();
+      if (!statusText.contains('présent') && !statusText.contains('present')) {
+        continue;
+      }
 
       final nobrs = cells[0].querySelectorAll('nobr');
       if (nobrs.length < 2) continue;
