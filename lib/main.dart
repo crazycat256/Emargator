@@ -10,6 +10,7 @@ import 'screens/planning_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/warning_screen.dart';
 import 'services/attendance_notification_service.dart';
+import 'services/attendance_service.dart';
 import 'services/battery_service.dart';
 import 'services/planning_prefs_service.dart';
 
@@ -39,6 +40,10 @@ void main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
+  /// Global navigator key for showing SnackBars from notification callbacks.
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -56,6 +61,7 @@ class MyApp extends StatelessWidget {
         ),
       ],
       child: MaterialApp(
+        navigatorKey: navigatorKey,
         title: 'Émargator',
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
@@ -85,6 +91,20 @@ class _MainTabScreenState extends State<MainTabScreen> {
     });
   }
 
+  void _showSignResultSnackBar(AttendanceResult result) {
+    final ctx = MyApp.navigatorKey.currentContext;
+    if (ctx == null) return;
+    final isSuccess =
+        result == AttendanceResult.success ||
+        result == AttendanceResult.alreadySignedIn;
+    ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        backgroundColor: isSuccess ? Colors.green : Colors.red,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
@@ -102,7 +122,9 @@ class _MainTabScreenState extends State<MainTabScreen> {
     if (!_notifCallbacksWired) {
       _notifCallbacksWired = true;
       AttendanceNotificationService.onSignAttendance = () async {
-        await appState.signAttendance();
+        final result = await appState.signAttendance();
+        // Show result SnackBar via global navigator key (not a widget context)
+        _showSignResultSnackBar(result);
       };
       AttendanceNotificationService.onIgnoreSlot = (slotKey) async {
         await PlanningPrefsService.setOverride(

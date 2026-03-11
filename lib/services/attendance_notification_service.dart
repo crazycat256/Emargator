@@ -13,8 +13,18 @@ class _SlotNotif {
   final Duration offsetFromStart;
   final String label;
   final bool playSound;
+  final bool showRemaining;
 
-  const _SlotNotif(this.offsetFromStart, this.label, {this.playSound = false});
+  /// If true, use maximum visibility (fullScreenIntent, ticker, etc.)
+  final bool urgent;
+
+  const _SlotNotif(
+    this.offsetFromStart,
+    this.label, {
+    this.playSound = false,
+    this.showRemaining = false,
+    this.urgent = false,
+  });
 }
 
 /// Callback types for notification actions.
@@ -34,19 +44,30 @@ class AttendanceNotificationService {
   static OnSignAttendance? onSignAttendance;
   static OnIgnoreSlot? onIgnoreSlot;
 
-  /// The 4 notification timings per slot.
+  /// The 5 notification timings per slot (offsets from start).
+  /// Slots are 90 min, so 75 min = 15 min before end, etc.
   static const _notifTimings = [
+    // 1 min after start
+    _SlotNotif(Duration(minutes: 1), 'Créneau commencé'),
     // 5 min after start
-    _SlotNotif(Duration(minutes: 5), 'Créneau commencé'),
-    // 30 min before end  (offset computed from start based on slot duration)
-    _SlotNotif(Duration(minutes: -30), '30 min restantes'),
-    // 5 min before end
-    _SlotNotif(Duration(minutes: -5), '5 min restantes', playSound: true),
-    // 1min30 before end
+    _SlotNotif(Duration(minutes: 5), 'Créneau en cours'),
+    // 75 min after start (15 min before end)
+    _SlotNotif(Duration(minutes: 75), '15 min restantes', showRemaining: true),
+    // 85 min after start (5 min before end)
     _SlotNotif(
-      Duration(minutes: -1, seconds: -30),
-      '1 min 30 restantes',
+      Duration(minutes: 85),
+      '5 min restantes',
       playSound: true,
+      showRemaining: true,
+      urgent: true,
+    ),
+    // 88 min after start (2 min before end)
+    _SlotNotif(
+      Duration(minutes: 88),
+      '2 min restantes',
+      playSound: true,
+      showRemaining: true,
+      urgent: true,
     ),
   ];
 
@@ -191,13 +212,8 @@ class AttendanceNotificationService {
       final slotEnd = slot.getEndTime(date);
 
       for (final timing in _notifTimings) {
-        DateTime notifTime;
-        if (timing.offsetFromStart.isNegative) {
-          // Negative = offset from end
-          notifTime = slotEnd.add(timing.offsetFromStart);
-        } else {
-          notifTime = slotStart.add(timing.offsetFromStart);
-        }
+        // All timings are offsets from start
+        final notifTime = slotStart.add(timing.offsetFromStart);
 
         // Don't schedule if: in the past, or after slot end, or before slot start
         if (!notifTime.isAfter(now)) continue;
@@ -205,17 +221,25 @@ class AttendanceNotificationService {
           continue;
         }
 
-        final remaining = slotEnd.difference(notifTime);
-        final remainStr = _formatRemaining(remaining);
+        String body;
+        if (timing.showRemaining) {
+          final remaining = slotEnd.difference(notifTime);
+          final remainStr = _formatRemaining(remaining);
+          body = '${slot.getTimeRange()} — $remainStr';
+        } else {
+          body = '${slot.getTimeRange()} — ${timing.label}';
+        }
 
         try {
           await _scheduleNotification(
             id: id,
-            title: '⚠️ Émargement requis',
-            body:
-                '${slot.getTimeRange()} — ${timing.label}${remainStr.isNotEmpty ? ' ($remainStr)' : ''}',
+            title: timing.urgent
+                ? '🚨 Émargement URGENT'
+                : '⚠️ Émargement requis',
+            body: body,
             scheduledTime: notifTime,
             playSound: timing.playSound,
+            urgent: timing.urgent,
             payload: slot.keyForDate(date),
           );
           _scheduledIds.add(id);
@@ -269,6 +293,7 @@ class AttendanceNotificationService {
     required DateTime scheduledTime,
     required bool playSound,
     required String payload,
+    bool urgent = false,
   }) async {
     final androidDetails = AndroidNotificationDetails(
       playSound ? 'emargator_sound' : 'emargator_silent',
@@ -276,11 +301,17 @@ class AttendanceNotificationService {
       channelDescription: playSound
           ? 'Notifications avec son et vibration'
           : 'Notifications vibration seule (sans son)',
-      importance: Importance.high,
-      priority: Priority.high,
+      importance: Importance.max,
+      priority: Priority.max,
       enableVibration: true,
       playSound: playSound,
       channelShowBadge: true,
+      fullScreenIntent: urgent,
+      ticker: urgent ? title : null,
+      category: urgent
+          ? AndroidNotificationCategory.alarm
+          : AndroidNotificationCategory.reminder,
+      visibility: NotificationVisibility.public,
       actions: const <AndroidNotificationAction>[
         AndroidNotificationAction(
           _actionSign,
