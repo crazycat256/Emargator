@@ -12,9 +12,9 @@ Emargator automatise le processus d'émargement en ligne sur Moodle. L'applicati
 <p align="center">
    <img src="/assets/readme/main-screen.png" alt="Ecran principal" width="30%" />
    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-   <img src="/assets/readme/history-screen.png" alt="Historique" width="30%" />
+   <img src="/assets/readme/planning-screen.png" alt="Historique" width="30%" />
    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-   <img src="/assets/readme/settings-screen.png" alt="Paramètres" width="30%" />
+   <img src="/assets/readme/history-screen.png" alt="Paramètres" width="30%" />
 </p>
 
 **Créneaux d'émargement** (du lundi au vendredi) :
@@ -35,9 +35,7 @@ Emargator automatise le processus d'émargement en ligne sur Moodle. L'applicati
 
 ### Téléchargement
 
-- **Android** : [Google Play Store](https://play.google.com/store/apps) *(à venir)*
-- **iOS** : [App Store](https://apps.apple.com/) *(à venir)*
-- **Autres plateformes** : [Page des Releases GitHub](https://github.com/crazycat256/Emargator/releases)
+- **[Releases GitHub](https://github.com/crazycat256/Emargator/releases)**
 
 ## Compilation
 
