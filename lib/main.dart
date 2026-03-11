@@ -10,6 +10,7 @@ import 'screens/planning_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/warning_screen.dart';
 import 'services/attendance_notification_service.dart';
+import 'services/battery_service.dart';
 import 'services/planning_prefs_service.dart';
 
 void main() async {
@@ -46,8 +47,8 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) {
             final state = PlanningState();
-            AttendanceNotificationService.init().then((_) async {
-              await AttendanceNotificationService.requestPermission();
+            AttendanceNotificationService.init().then((_) {
+              BatteryService.ensureExempt();
               state.initialize();
             });
             return state;

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/index/ensi_index.dart';
@@ -14,6 +16,7 @@ import '../services/time_slot_service.dart';
 class PlanningState extends ChangeNotifier {
   bool _isLoading = false;
   bool _indexLoaded = false;
+  Completer<void>? _schedulingLock;
 
   // Selection
   EnsiFormation? _selectedFormation;
@@ -284,8 +287,16 @@ class PlanningState extends ChangeNotifier {
   }
 
   Future<void> _scheduleNotifications() async {
+    // Wait for any in-progress scheduling to finish before starting a new one
+    while (_schedulingLock != null) {
+      await _schedulingLock!.future;
+    }
+    _schedulingLock = Completer<void>();
     try {
       final now = DateTime.now();
+      // Android limits to 500 concurrent alarms.
+      // Only schedule for the next 7 days to stay well under that.
+      final horizon = now.add(const Duration(days: 7));
 
       // Collect unique (date, slot) pairs that need attendance and are in the future
       final slotsToAttend = <({DateTime date, TimeSlot slot})>[];
@@ -293,6 +304,7 @@ class PlanningState extends ChangeNotifier {
 
       for (final lesson in _lessons) {
         if (lesson.hourEnd.isBefore(now)) continue;
+        if (lesson.hourStart.isAfter(horizon)) continue;
         if (!shouldAttend(lesson)) continue;
 
         final date = DateTime(
@@ -307,6 +319,7 @@ class PlanningState extends ChangeNotifier {
         for (final slot in overlapping) {
           if (!shouldAttendSlot(date, slot)) continue;
           if (slot.getEndTime(date).isBefore(now)) continue;
+          if (slot.getStartTime(date).isAfter(horizon)) continue;
           final key = slot.keyForDate(date);
           if (seen.add(key)) {
             slotsToAttend.add((date: date, slot: slot));
@@ -325,6 +338,9 @@ class PlanningState extends ChangeNotifier {
       );
     } catch (e) {
       debugPrint('Notification scheduling failed: $e');
+    } finally {
+      _schedulingLock!.complete();
+      _schedulingLock = null;
     }
   }
 }

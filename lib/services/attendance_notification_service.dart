@@ -1,7 +1,7 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/timezone.dart' as tz;
 import '../services/time_slot_service.dart';
 
 /// Action identifiers for notification buttons.
@@ -26,6 +26,12 @@ class AttendanceNotificationService {
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
+
+  /// IDs of notifications we've scheduled (so we can cancel them individually).
+  static final List<int> _scheduledIds = [];
+
+  /// Active Dart timers for scheduled notifications.
+  static final List<Timer> _activeTimers = [];
 
   /// Callbacks set from outside (main.dart) to handle notification actions.
   static OnSignAttendance? onSignAttendance;
@@ -92,9 +98,13 @@ class AttendanceNotificationService {
           enableVibration: true,
         ),
       );
+
+      // Request notification permission (Android 13+)
+      await androidPlugin.requestNotificationsPermission();
     }
 
     _initialized = true;
+    debugPrint('AttendanceNotif: initialized');
   }
 
   /// Handle notification tap / action button tap.
@@ -152,15 +162,23 @@ class AttendanceNotificationService {
     required List<({DateTime date, TimeSlot slot})> slotsToAttend,
     required Set<String> signedSlotKeys,
   }) async {
-    if (!_initialized) return;
-    try {
-      await _plugin.cancelAll();
-    } catch (e) {
-      debugPrint('cancelAll failed (continuing): $e');
+    if (!_initialized) {
+      debugPrint('AttendanceNotif: not initialized, skipping');
+      return;
     }
+
+    // Cancel previous notifications — try cancelAll first, fall back to individual cancel
+    await _cancelPrevious();
+
+    // Clear tracked IDs
+    _scheduledIds.clear();
 
     int id = 0;
     final now = DateTime.now();
+    debugPrint(
+      'AttendanceNotif: scheduling for ${slotsToAttend.length} slots '
+      '(${signedSlotKeys.length} signed)',
+    );
 
     for (final entry in slotsToAttend) {
       final date = entry.date;
@@ -190,8 +208,8 @@ class AttendanceNotificationService {
         final remaining = slotEnd.difference(notifTime);
         final remainStr = _formatRemaining(remaining);
 
-        await _scheduleNotification(
-          id: id++,
+        _scheduleNotification(
+          id: id,
           title: '⚠️ Émargement requis',
           body:
               '${slot.getTimeRange()} — ${timing.label}${remainStr.isNotEmpty ? ' ($remainStr)' : ''}',
@@ -199,14 +217,45 @@ class AttendanceNotificationService {
           playSound: timing.playSound,
           payload: slot.keyForDate(date),
         );
+        _scheduledIds.add(id);
+        id++;
       }
     }
+    debugPrint(
+      'AttendanceNotif: scheduled ${_scheduledIds.length} notifications',
+    );
   }
 
-  /// Cancel all scheduled notifications.
+  /// Cancel all previously scheduled notifications and timers.
+  static Future<void> _cancelPrevious() async {
+    // Cancel all Dart timers first
+    for (final timer in _activeTimers) {
+      timer.cancel();
+    }
+    _activeTimers.clear();
+
+    // Cancel displayed notifications
+    try {
+      await _plugin.cancelAll();
+      debugPrint('AttendanceNotif: cancelAll succeeded');
+    } catch (e) {
+      debugPrint(
+        'AttendanceNotif: cancelAll failed, cancelling individually: $e',
+      );
+      for (final id in _scheduledIds) {
+        try {
+          await _plugin.cancel(id);
+        } catch (_) {}
+      }
+    }
+    _scheduledIds.clear();
+    debugPrint('AttendanceNotif: cancel done (timers + notifications)');
+  }
+
+  /// Cancel all scheduled notifications (public).
   static Future<void> cancelAll() async {
     if (!_initialized) return;
-    await _plugin.cancelAll();
+    await _cancelPrevious();
   }
 
   static String _formatRemaining(Duration d) {
@@ -215,14 +264,19 @@ class AttendanceNotificationService {
     return '${d.inMinutes} min';
   }
 
-  static Future<void> _scheduleNotification({
+  /// Schedule a notification using a Dart Timer + show().
+  /// This bypasses Android's AlarmManager which doesn't fire reliably on all devices.
+  static void _scheduleNotification({
     required int id,
     required String title,
     required String body,
     required DateTime scheduledTime,
     required bool playSound,
     required String payload,
-  }) async {
+  }) {
+    final delay = scheduledTime.difference(DateTime.now());
+    if (delay.isNegative) return;
+
     final androidDetails = AndroidNotificationDetails(
       playSound ? 'emargator_sound' : 'emargator_silent',
       playSound ? 'Rappels d\'émargement urgents' : 'Rappels d\'émargement',
@@ -257,19 +311,14 @@ class AttendanceNotificationService {
       ),
     );
 
-    final tzTime = tz.TZDateTime.from(scheduledTime, tz.local);
+    final timer = Timer(delay, () {
+      _plugin.show(id, title, body, details, payload: payload);
+      debugPrint('AttendanceNotif: fired #$id (${delay.inSeconds}s delay)');
+    });
+    _activeTimers.add(timer);
 
-    await _plugin.zonedSchedule(
-      id,
-      title,
-      body,
-      tzTime,
-      details,
-      payload: payload,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      matchDateTimeComponents: null,
+    debugPrint(
+      'AttendanceNotif: scheduled #$id in ${delay.inSeconds}s (Timer+show)',
     );
   }
 }
