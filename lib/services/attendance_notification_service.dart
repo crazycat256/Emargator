@@ -141,8 +141,7 @@ class AttendanceNotificationService {
         }
         break;
       default:
-        // Tapped the notification body itself — treat as sign
-        onSignAttendance?.call();
+        // Tapped the notification body — just open the app (home screen)
         break;
     }
   }
@@ -233,9 +232,7 @@ class AttendanceNotificationService {
         try {
           await _scheduleNotification(
             id: id,
-            title: timing.urgent
-                ? '🚨 Émargement URGENT'
-                : 'Émargement requis',
+            title: timing.urgent ? '🚨 Émargement URGENT' : 'Émargement requis',
             body: body,
             scheduledTime: notifTime,
             playSound: timing.playSound,
