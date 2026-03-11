@@ -1,7 +1,7 @@
-import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/timezone.dart' as tz;
 import '../services/time_slot_service.dart';
 
 /// Action identifiers for notification buttons.
@@ -29,9 +29,6 @@ class AttendanceNotificationService {
 
   /// IDs of notifications we've scheduled (so we can cancel them individually).
   static final List<int> _scheduledIds = [];
-
-  /// Active Dart timers for scheduled notifications.
-  static final List<Timer> _activeTimers = [];
 
   /// Callbacks set from outside (main.dart) to handle notification actions.
   static OnSignAttendance? onSignAttendance;
@@ -101,6 +98,9 @@ class AttendanceNotificationService {
 
       // Request notification permission (Android 13+)
       await androidPlugin.requestNotificationsPermission();
+
+      // Request exact alarm permission
+      await androidPlugin.requestExactAlarmsPermission();
     }
 
     _initialized = true;
@@ -208,17 +208,22 @@ class AttendanceNotificationService {
         final remaining = slotEnd.difference(notifTime);
         final remainStr = _formatRemaining(remaining);
 
-        _scheduleNotification(
-          id: id,
-          title: '⚠️ Émargement requis',
-          body:
-              '${slot.getTimeRange()} — ${timing.label}${remainStr.isNotEmpty ? ' ($remainStr)' : ''}',
-          scheduledTime: notifTime,
-          playSound: timing.playSound,
-          payload: slot.keyForDate(date),
-        );
-        _scheduledIds.add(id);
-        id++;
+        try {
+          await _scheduleNotification(
+            id: id,
+            title: '⚠️ Émargement requis',
+            body:
+                '${slot.getTimeRange()} — ${timing.label}${remainStr.isNotEmpty ? ' ($remainStr)' : ''}',
+            scheduledTime: notifTime,
+            playSound: timing.playSound,
+            payload: slot.keyForDate(date),
+          );
+          _scheduledIds.add(id);
+          id++;
+        } catch (e) {
+          debugPrint('AttendanceNotif: failed to schedule id=$id: $e');
+          id++;
+        }
       }
     }
     debugPrint(
@@ -226,15 +231,8 @@ class AttendanceNotificationService {
     );
   }
 
-  /// Cancel all previously scheduled notifications and timers.
+  /// Cancel all previously scheduled notifications.
   static Future<void> _cancelPrevious() async {
-    // Cancel all Dart timers first
-    for (final timer in _activeTimers) {
-      timer.cancel();
-    }
-    _activeTimers.clear();
-
-    // Cancel displayed notifications
     try {
       await _plugin.cancelAll();
       debugPrint('AttendanceNotif: cancelAll succeeded');
@@ -249,7 +247,6 @@ class AttendanceNotificationService {
       }
     }
     _scheduledIds.clear();
-    debugPrint('AttendanceNotif: cancel done (timers + notifications)');
   }
 
   /// Cancel all scheduled notifications (public).
@@ -264,19 +261,15 @@ class AttendanceNotificationService {
     return '${d.inMinutes} min';
   }
 
-  /// Schedule a notification using a Dart Timer + show().
-  /// This bypasses Android's AlarmManager which doesn't fire reliably on all devices.
-  static void _scheduleNotification({
+  /// Schedule a notification via zonedSchedule (AlarmManager on Android).
+  static Future<void> _scheduleNotification({
     required int id,
     required String title,
     required String body,
     required DateTime scheduledTime,
     required bool playSound,
     required String payload,
-  }) {
-    final delay = scheduledTime.difference(DateTime.now());
-    if (delay.isNegative) return;
-
+  }) async {
     final androidDetails = AndroidNotificationDetails(
       playSound ? 'emargator_sound' : 'emargator_silent',
       playSound ? 'Rappels d\'émargement urgents' : 'Rappels d\'émargement',
@@ -311,14 +304,20 @@ class AttendanceNotificationService {
       ),
     );
 
-    final timer = Timer(delay, () {
-      _plugin.show(id, title, body, details, payload: payload);
-      debugPrint('AttendanceNotif: fired #$id (${delay.inSeconds}s delay)');
-    });
-    _activeTimers.add(timer);
+    final tzTime = tz.TZDateTime.from(scheduledTime, tz.local);
 
+    await _plugin.zonedSchedule(
+      id,
+      title,
+      body,
+      tzTime,
+      details,
+      payload: payload,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+    );
     debugPrint(
-      'AttendanceNotif: scheduled #$id in ${delay.inSeconds}s (Timer+show)',
+      'AttendanceNotif: scheduled #$id at $scheduledTime (tz=$tzTime)',
     );
   }
 }
