@@ -48,7 +48,7 @@ class AttendanceNotificationService {
   /// Slots are 90 min, so 75 min = 15 min before end, etc.
   static const _notifTimings = [
     // 1 min after start
-    _SlotNotif(Duration(minutes: 1), 'Créneau commencé'),
+    _SlotNotif(Duration(seconds: 5), 'Créneau commencé'),
     // 5 min after start
     _SlotNotif(Duration(minutes: 5), 'Créneau en cours'),
     // 75 min after start (15 min before end)
