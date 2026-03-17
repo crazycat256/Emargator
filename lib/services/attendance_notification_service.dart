@@ -5,6 +5,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import '../services/time_slot_service.dart';
 import '../services/background_sync_service.dart';
+import 'planning_prefs_service.dart';
 
 /// Action identifiers for notification buttons.
 const _actionSign = 'sign_attendance';
@@ -12,21 +13,13 @@ const _actionIgnore = 'ignore_slot';
 
 /// Notification timing offsets relative to a slot.
 class _SlotNotif {
-  final Duration offsetFromStart;
-  final String label;
-  final bool playSound;
-  final bool showRemaining;
+  final Duration offset;
+  final NotificationTimingMode timingMode;
 
   /// If true, use maximum visibility (fullScreenIntent, ticker, etc.)
   final bool urgent;
 
-  const _SlotNotif(
-    this.offsetFromStart,
-    this.label, {
-    this.playSound = false,
-    this.showRemaining = false,
-    this.urgent = false,
-  });
+  const _SlotNotif(this.offset, this.timingMode, {this.urgent = false});
 }
 
 /// Callback types for notification actions.
@@ -35,6 +28,7 @@ typedef OnIgnoreSlot = Future<void> Function(String slotKey);
 
 /// Schedules attendance reminder notifications for time slots.
 class AttendanceNotificationService {
+  static const _slotDurationSeconds = 90 * 60;
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
@@ -47,32 +41,35 @@ class AttendanceNotificationService {
   static OnSignAttendance? onSignAttendance;
   static OnIgnoreSlot? onIgnoreSlot;
 
-  /// The 5 notification timings per slot (offsets from start).
-  /// Slots are 90 min, so 75 min = 15 min before end, etc.
-  static const _notifTimings = [
-    // 1 min after start
-    _SlotNotif(Duration(seconds: 5), 'Créneau commencé'),
-    // 5 min after start
-    _SlotNotif(Duration(minutes: 5), 'Créneau en cours'),
-    // 75 min after start (15 min before end)
-    _SlotNotif(Duration(minutes: 75), '15 min restantes', showRemaining: true),
-    // 85 min after start (5 min before end)
-    _SlotNotif(
-      Duration(minutes: 85),
-      '5 min restantes',
-      playSound: true,
-      showRemaining: true,
-      urgent: true,
-    ),
-    // 88 min after start (2 min before end)
-    _SlotNotif(
-      Duration(minutes: 88),
-      '2 min restantes',
-      playSound: true,
-      showRemaining: true,
-      urgent: true,
-    ),
-  ];
+  static List<_SlotNotif> _buildNotifTimings(
+    List<PlanningNotificationRule> rules,
+  ) {
+    final normalized = rules.where((r) => r.offsetSeconds > 0).toList()
+      ..sort((a, b) => a.offsetSeconds.compareTo(b.offsetSeconds));
+
+    final source = normalized.isEmpty
+        ? PlanningPrefsService.defaultNotificationRules
+        : normalized;
+
+    return source
+        .map(
+          (r) => _SlotNotif(
+            Duration(seconds: r.offsetSeconds),
+            r.timingMode,
+            urgent: r.urgent,
+          ),
+        )
+        .toList()
+      ..sort((a, b) {
+        final ea = a.timingMode == NotificationTimingMode.afterStart
+            ? a.offset.inSeconds
+            : _slotDurationSeconds - a.offset.inSeconds;
+        final eb = b.timingMode == NotificationTimingMode.afterStart
+            ? b.offset.inSeconds
+            : _slotDurationSeconds - b.offset.inSeconds;
+        return ea.compareTo(eb);
+      });
+  }
 
   static Future<void> init() async {
     if (_initialized) return;
@@ -184,6 +181,7 @@ class AttendanceNotificationService {
   static Future<void> scheduleForSlots({
     required List<({DateTime date, TimeSlot slot})> slotsToAttend,
     required Set<String> signedSlotKeys,
+    required List<PlanningNotificationRule> notificationRules,
   }) async {
     if (!_initialized) {
       debugPrint('AttendanceNotif: not initialized, skipping');
@@ -203,6 +201,8 @@ class AttendanceNotificationService {
       '(${signedSlotKeys.length} signed)',
     );
 
+    final notifTimings = _buildNotifTimings(notificationRules);
+
     for (final entry in slotsToAttend) {
       final date = entry.date;
       final slot = entry.slot;
@@ -217,9 +217,10 @@ class AttendanceNotificationService {
       final List<int> slotNotifIds = [];
       DateTime? firstNotifTime;
 
-      for (final timing in _notifTimings) {
-        // All timings are offsets from start
-        final notifTime = slotStart.add(timing.offsetFromStart);
+      for (final timing in notifTimings) {
+        final notifTime = timing.timingMode == NotificationTimingMode.afterStart
+            ? slotStart.add(timing.offset)
+            : slotEnd.subtract(timing.offset);
 
         // Don't schedule if: in the past, or after slot end, or before slot start
         if (!notifTime.isAfter(now)) continue;
@@ -232,12 +233,12 @@ class AttendanceNotificationService {
         }
 
         String body;
-        if (timing.showRemaining) {
+        if (timing.urgent) {
           final remaining = slotEnd.difference(notifTime);
           final remainStr = _formatRemaining(remaining);
-          body = '${slot.getTimeRange()} — $remainStr';
+          body = '${slot.getTimeRange()} — $remainStr restantes';
         } else {
-          body = '${slot.getTimeRange()} — ${timing.label}';
+          body = '${slot.getTimeRange()} — Rappel d\'émargement';
         }
 
         try {
@@ -246,7 +247,7 @@ class AttendanceNotificationService {
             title: timing.urgent ? '🚨 Émargement URGENT' : 'Émargement requis',
             body: body,
             scheduledTime: notifTime,
-            playSound: timing.playSound,
+            playSound: timing.urgent,
             urgent: timing.urgent,
             payload: slotKey,
           );

@@ -293,6 +293,16 @@ class PlanningState extends ChangeNotifier {
     }
     _schedulingLock = Completer<void>();
     try {
+      final notificationsEnabled =
+          await PlanningPrefsService.getNotificationsEnabled();
+      if (!notificationsEnabled) {
+        await AttendanceNotificationService.cancelAll();
+        return;
+      }
+
+      final notificationRules =
+          await PlanningPrefsService.getNotificationRules();
+
       final now = DateTime.now();
       // Android limits to 500 concurrent alarms.
       // Only schedule for the next 7 days to stay well under that.
@@ -335,6 +345,7 @@ class PlanningState extends ChangeNotifier {
       await AttendanceNotificationService.scheduleForSlots(
         slotsToAttend: slotsToAttend,
         signedSlotKeys: signedKeys,
+        notificationRules: notificationRules,
       );
     } catch (e) {
       debugPrint('Notification scheduling failed: $e');

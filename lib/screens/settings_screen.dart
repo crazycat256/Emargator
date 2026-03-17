@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../providers/planning_state.dart';
+import '../services/planning_prefs_service.dart';
 import 'about_screen.dart';
 import 'group_selection_screen.dart';
 import 'keyword_settings_screen.dart';
+import 'notification_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -22,6 +24,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _hasUnsavedChanges = false;
   String _initialStudentId = '';
   bool _isInitialized = false;
+  bool _notifEnabled = true;
+  int _notifCount = 0;
+  int _urgentNotifCount = 0;
 
   @override
   void initState() {
@@ -45,13 +50,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadExistingStudentId() async {
     final appState = context.read<AppState>();
     final studentId = await appState.getStudentId();
+    final notifEnabled = await PlanningPrefsService.getNotificationsEnabled();
+    final notifRules = await PlanningPrefsService.getNotificationRules();
+    final notifCount = notifRules.length;
+    final urgentCount = notifRules.where((r) => r.urgent).length;
     setState(() {
       if (studentId != null) {
         _studentIdController.text = studentId;
         _initialStudentId = studentId;
         _hasExistingCredentials = true;
       }
+      _notifEnabled = notifEnabled;
+      _notifCount = notifCount;
+      _urgentNotifCount = urgentCount;
       _isInitialized = true;
+    });
+  }
+
+  Future<void> _reloadNotificationSummary() async {
+    final notifEnabled = await PlanningPrefsService.getNotificationsEnabled();
+    final notifRules = await PlanningPrefsService.getNotificationRules();
+    if (!mounted) return;
+    setState(() {
+      _notifEnabled = notifEnabled;
+      _notifCount = notifRules.length;
+      _urgentNotifCount = notifRules.where((r) => r.urgent).length;
     });
   }
 
@@ -60,6 +83,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _studentIdController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _setNotificationsEnabled(bool enabled) async {
+    final planningState = context.read<PlanningState>();
+    setState(() => _notifEnabled = enabled);
+    await PlanningPrefsService.setNotificationsEnabled(enabled);
+    await planningState.rescheduleNotifications();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          enabled ? 'Notifications activées' : 'Notifications désactivées',
+        ),
+        backgroundColor: enabled ? Colors.green : Colors.orange,
+      ),
+    );
   }
 
   Future<void> _saveCredentials() async {
@@ -246,6 +285,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const KeywordSettingsScreen()),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _notifEnabled,
+                  title: const Text('Notifications'),
+                  subtitle: Text(
+                    '$_notifCount notifications, $_urgentNotifCount urgentes',
+                  ),
+                  onChanged: _setNotificationsEnabled,
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const NotificationSettingsScreen(),
+                      ),
+                    );
+                    await _reloadNotificationSummary();
+                  },
+                  icon: const Icon(Icons.tune),
+                  label: const Text('Configurer les notifications'),
+                ),
+              ],
             ),
           ),
         ),
