@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/attendance_service.dart';
+import '../services/attendance_notification_service.dart';
 import '../services/storage_service.dart';
 import '../services/log_service.dart';
 import '../services/time_slot_service.dart';
@@ -160,6 +161,7 @@ class AppState extends ChangeNotifier {
 
       if (result == AttendanceResult.success ||
           result == AttendanceResult.alreadySignedIn) {
+        await AttendanceNotificationService.cancelCurrentSlotNotifications();
         fetchMoodleAttendance(); // refresh Moodle data
       }
 
@@ -241,6 +243,15 @@ class AppState extends ChangeNotifier {
     try {
       final sessions = await _attendanceService!.fetchSignedSessions();
       _moodleSignedKeys = sessions.map((s) => s.key).toSet();
+      final slotInfo = TimeSlotService.getCurrentSlotInfo();
+      if (slotInfo.isInSlot && slotInfo.currentSlot != null) {
+        final currentSlotKey = slotInfo.currentSlot!.keyForDate(DateTime.now());
+        if (_moodleSignedKeys.contains(currentSlotKey)) {
+          await AttendanceNotificationService.cancelNotificationsForSlot(
+            currentSlotKey,
+          );
+        }
+      }
       _moodleDataLoaded = true;
       await _saveMoodleCache();
       notifyListeners();

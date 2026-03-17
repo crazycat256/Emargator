@@ -41,6 +41,7 @@ class AttendanceNotificationService {
 
   /// IDs of notifications we've scheduled (so we can cancel them individually).
   static final List<int> _scheduledIds = [];
+  static final Map<int, String> _scheduledSlotByNotifId = {};
 
   /// Callbacks set from outside (main.dart) to handle notification actions.
   static OnSignAttendance? onSignAttendance;
@@ -227,7 +228,7 @@ class AttendanceNotificationService {
         }
 
         if (firstNotifTime == null || notifTime.isBefore(firstNotifTime)) {
-             firstNotifTime = notifTime;
+          firstNotifTime = notifTime;
         }
 
         String body;
@@ -250,6 +251,7 @@ class AttendanceNotificationService {
             payload: slotKey,
           );
           _scheduledIds.add(id);
+          _scheduledSlotByNotifId[id] = slotKey;
           slotNotifIds.add(id);
           id++;
         } catch (e) {
@@ -260,26 +262,28 @@ class AttendanceNotificationService {
 
       // If we scheduled at least one notification for this slot, setup the background sync alarm
       if (slotNotifIds.isNotEmpty && firstNotifTime != null) {
-          final alarmTime = firstNotifTime.subtract(const Duration(minutes: 2));
-          // Make sure alarm isn't scheduled in the past. If it is, schedule it for almost immediately
-          final finalAlarmTime = alarmTime.isAfter(now) ? alarmTime : now.add(const Duration(seconds: 10));
+        final alarmTime = firstNotifTime.subtract(const Duration(minutes: 2));
+        // Make sure alarm isn't scheduled in the past. If it is, schedule it for almost immediately
+        final finalAlarmTime = alarmTime.isAfter(now)
+            ? alarmTime
+            : now.add(const Duration(seconds: 10));
 
-          final alarmId = slotKey.hashCode.abs(); // Need unique ID for the alarm
-          debugPrint('AttendanceNotif: Scheduling background sync alarm $alarmId at $finalAlarmTime for slot $slotKey');
+        final alarmId = slotKey.hashCode.abs(); // Need unique ID for the alarm
+        debugPrint(
+          'AttendanceNotif: Scheduling background sync alarm $alarmId at $finalAlarmTime for slot $slotKey',
+        );
 
-          await AndroidAlarmManager.oneShotAt(
-            finalAlarmTime,
-            alarmId,
-            BackgroundSyncService.syncAttendanceStatus,
-            exact: true,
-            wakeup: true,
-            alarmClock: true, // Requires SCHEDULE_EXACT_ALARM permission, which we already have 
-            params: {
-              'slotKey': slotKey,
-              'notifIds': slotNotifIds,
-            },
-          );
-       }
+        await AndroidAlarmManager.oneShotAt(
+          finalAlarmTime,
+          alarmId,
+          BackgroundSyncService.syncAttendanceStatus,
+          exact: true,
+          wakeup: true,
+          alarmClock:
+              true, // Requires SCHEDULE_EXACT_ALARM permission, which we already have
+          params: {'slotKey': slotKey, 'notifIds': slotNotifIds},
+        );
+      }
     }
     debugPrint(
       'AttendanceNotif: scheduled ${_scheduledIds.length} notifications',
@@ -288,6 +292,7 @@ class AttendanceNotificationService {
 
   /// Cancel all previously scheduled notifications.
   static Future<void> _cancelPrevious() async {
+    final slotKeys = _scheduledSlotByNotifId.values.toSet();
     try {
       await _plugin.cancelAll();
       debugPrint('AttendanceNotif: cancelAll succeeded');
@@ -301,7 +306,54 @@ class AttendanceNotificationService {
         } catch (_) {}
       }
     }
+
+    for (final slotKey in slotKeys) {
+      try {
+        await AndroidAlarmManager.cancel(slotKey.hashCode.abs());
+      } catch (_) {}
+    }
+
     _scheduledIds.clear();
+    _scheduledSlotByNotifId.clear();
+  }
+
+  static String? _currentSlotKeyNow() {
+    final slotInfo = TimeSlotService.getCurrentSlotInfo();
+    if (!slotInfo.isInSlot || slotInfo.currentSlot == null) return null;
+    return slotInfo.currentSlot!.keyForDate(DateTime.now());
+  }
+
+  static Future<void> cancelNotificationsForSlot(String slotKey) async {
+    if (!_initialized) return;
+
+    final idsToCancel = _scheduledSlotByNotifId.entries
+        .where((e) => e.value == slotKey)
+        .map((e) => e.key)
+        .toList();
+
+    if (idsToCancel.isEmpty) return;
+
+    for (final id in idsToCancel) {
+      try {
+        await _plugin.cancel(id);
+      } catch (_) {}
+      _scheduledIds.remove(id);
+      _scheduledSlotByNotifId.remove(id);
+    }
+
+    try {
+      await AndroidAlarmManager.cancel(slotKey.hashCode.abs());
+    } catch (_) {}
+
+    debugPrint(
+      'AttendanceNotif: cancelled ${idsToCancel.length} notifications for slot $slotKey',
+    );
+  }
+
+  static Future<void> cancelCurrentSlotNotifications() async {
+    final slotKey = _currentSlotKeyNow();
+    if (slotKey == null) return;
+    await cancelNotificationsForSlot(slotKey);
   }
 
   /// Cancel all scheduled notifications (public).
