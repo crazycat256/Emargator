@@ -2,7 +2,9 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
+import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import '../services/time_slot_service.dart';
+import '../services/background_sync_service.dart';
 
 /// Action identifiers for notification buttons.
 const _actionSign = 'sign_attendance';
@@ -203,12 +205,16 @@ class AttendanceNotificationService {
     for (final entry in slotsToAttend) {
       final date = entry.date;
       final slot = entry.slot;
+      final slotKey = slot.keyForDate(date);
 
       // Skip already signed slots
-      if (signedSlotKeys.contains(slot.keyForDate(date))) continue;
+      if (signedSlotKeys.contains(slotKey)) continue;
 
       final slotStart = slot.getStartTime(date);
       final slotEnd = slot.getEndTime(date);
+
+      final List<int> slotNotifIds = [];
+      DateTime? firstNotifTime;
 
       for (final timing in _notifTimings) {
         // All timings are offsets from start
@@ -218,6 +224,10 @@ class AttendanceNotificationService {
         if (!notifTime.isAfter(now)) continue;
         if (notifTime.isAfter(slotEnd) || notifTime.isBefore(slotStart)) {
           continue;
+        }
+
+        if (firstNotifTime == null || notifTime.isBefore(firstNotifTime)) {
+             firstNotifTime = notifTime;
         }
 
         String body;
@@ -237,15 +247,39 @@ class AttendanceNotificationService {
             scheduledTime: notifTime,
             playSound: timing.playSound,
             urgent: timing.urgent,
-            payload: slot.keyForDate(date),
+            payload: slotKey,
           );
           _scheduledIds.add(id);
+          slotNotifIds.add(id);
           id++;
         } catch (e) {
           debugPrint('AttendanceNotif: failed to schedule id=$id: $e');
           id++;
         }
       }
+
+      // If we scheduled at least one notification for this slot, setup the background sync alarm
+      if (slotNotifIds.isNotEmpty && firstNotifTime != null) {
+          final alarmTime = firstNotifTime.subtract(const Duration(minutes: 2));
+          // Make sure alarm isn't scheduled in the past. If it is, schedule it for almost immediately
+          final finalAlarmTime = alarmTime.isAfter(now) ? alarmTime : now.add(const Duration(seconds: 10));
+
+          final alarmId = slotKey.hashCode.abs(); // Need unique ID for the alarm
+          debugPrint('AttendanceNotif: Scheduling background sync alarm $alarmId at $finalAlarmTime for slot $slotKey');
+
+          await AndroidAlarmManager.oneShotAt(
+            finalAlarmTime,
+            alarmId,
+            BackgroundSyncService.syncAttendanceStatus,
+            exact: true,
+            wakeup: true,
+            alarmClock: true, // Requires SCHEDULE_EXACT_ALARM permission, which we already have 
+            params: {
+              'slotKey': slotKey,
+              'notifIds': slotNotifIds,
+            },
+          );
+       }
     }
     debugPrint(
       'AttendanceNotif: scheduled ${_scheduledIds.length} notifications',

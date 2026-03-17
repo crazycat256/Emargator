@@ -52,6 +52,7 @@ class _PlanningScreenState extends State<PlanningScreen> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<PlanningState>();
+    final appState = context.read<AppState>();
 
     return Scaffold(
       appBar: AppBar(
@@ -67,7 +68,9 @@ class _PlanningScreenState extends State<PlanningScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Actualiser',
-            onPressed: state.isLoading ? null : () => state.refreshLessons(),
+            onPressed: state.isLoading
+                ? null
+                : () => _refreshPlanning(state, appState),
           ),
         ],
       ),
@@ -189,7 +192,7 @@ class _PlanningScreenState extends State<PlanningScreen> {
         ),
         Expanded(
           child: RefreshIndicator(
-            onRefresh: () => state.refreshLessons(),
+            onRefresh: () => _refreshPlanning(state, appState),
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
               itemCount: days.length,
@@ -422,6 +425,11 @@ class _PlanningScreenState extends State<PlanningScreen> {
     });
     if (localSigned) return true;
     return appState.isSlotSignedOnMoodle(day, slot);
+  }
+
+  Future<void> _refreshPlanning(PlanningState state, AppState appState) async {
+    await appState.fetchMoodleAttendance();
+    await state.refreshLessons();
   }
 
   void _openGroupSelection(BuildContext context) {

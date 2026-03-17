@@ -13,6 +13,7 @@ import 'services/attendance_notification_service.dart';
 import 'services/attendance_service.dart';
 import 'services/battery_service.dart';
 import 'services/planning_prefs_service.dart';
+import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,9 +53,11 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) {
             final state = PlanningState();
-            AttendanceNotificationService.init().then((_) {
-              BatteryService.ensureExempt();
-              state.initialize();
+            AndroidAlarmManager.initialize().then((_) {
+               AttendanceNotificationService.init().then((_) {
+                 BatteryService.ensureExempt();
+                 state.initialize();
+               });
             });
             return state;
           },
