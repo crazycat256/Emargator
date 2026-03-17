@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:io' show Platform;
 import 'providers/app_state.dart';
@@ -13,6 +14,7 @@ import 'services/attendance_notification_service.dart';
 import 'services/attendance_service.dart';
 import 'services/battery_service.dart';
 import 'services/planning_prefs_service.dart';
+import 'services/update_check_service.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 
 void main() async {
@@ -44,6 +46,8 @@ class MyApp extends StatelessWidget {
   /// Global navigator key for showing SnackBars from notification callbacks.
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
+  static final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
+      GlobalKey<ScaffoldMessengerState>();
 
   @override
   Widget build(BuildContext context) {
@@ -54,10 +58,10 @@ class MyApp extends StatelessWidget {
           create: (_) {
             final state = PlanningState();
             AndroidAlarmManager.initialize().then((_) {
-               AttendanceNotificationService.init().then((_) {
-                 BatteryService.ensureExempt();
-                 state.initialize();
-               });
+              AttendanceNotificationService.init().then((_) {
+                BatteryService.ensureExempt();
+                state.initialize();
+              });
             });
             return state;
           },
@@ -65,6 +69,7 @@ class MyApp extends StatelessWidget {
       ],
       child: MaterialApp(
         navigatorKey: navigatorKey,
+        scaffoldMessengerKey: scaffoldMessengerKey,
         title: 'Émargator',
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
@@ -87,6 +92,46 @@ class _MainTabScreenState extends State<MainTabScreen> {
   int _currentIndex = 0;
   bool _listeningToAppState = false;
   bool _notifCallbacksWired = false;
+  bool _updateCheckStarted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkForUpdatesInBackground();
+  }
+
+  Future<void> _checkForUpdatesInBackground() async {
+    if (_updateCheckStarted) return;
+    _updateCheckStarted = true;
+
+    final result = await UpdateCheckService.checkForUpdate();
+    if (!mounted || result == null || !result.hasUpdate) return;
+
+    MyApp.scaffoldMessengerKey.currentState?.showSnackBar(
+      SnackBar(
+        content: Text('Nouvelle version disponible : ${result.latestVersion}'),
+        action: SnackBarAction(
+          label: 'Mettre à jour',
+          onPressed: () {
+            _openReleaseUrl(result.releaseUrl);
+          },
+        ),
+        duration: const Duration(seconds: 6),
+      ),
+    );
+  }
+
+  Future<void> _openReleaseUrl(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened) {
+      MyApp.scaffoldMessengerKey.currentState?.showSnackBar(
+        const SnackBar(content: Text('Impossible d’ouvrir le lien.')),
+      );
+    }
+  }
 
   void _navigateToSettings() {
     setState(() {
