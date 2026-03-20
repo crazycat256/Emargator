@@ -49,11 +49,14 @@ dependencies:
   flutter_local_notifications: ^17.2.1+1
   week_of_year: ^2.0.0
   android_alarm_manager_plus: ^5.0.0
+  local_notifier: ^0.1.6
+  tray_manager: ^0.5.2
 
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.4
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -61,6 +64,29 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path_android: assets/icon.png
+  image_path: assets/icon.png
+  adaptive_icon_foreground: assets/icon.png
+  adaptive_icon_monochrome: assets/icon.png
+  adaptive_icon_background: "#FFFFFF"
+  background_color_ios: "#FFFFFF"
+  remove_alpha_ios: true
+  web:
+    generate: false
+  windows:
+    generate: true
+    image_path: assets/icon.png
+    icon_size: 48
+  macos:
+    generate: true
+    image_path: assets/icon.png
+  linux:
+    generate: true
+    image_path: assets/icon.png
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -72,6 +98,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/icon.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:window_manager/window_manager.dart';
+
 import 'dart:io' show Platform;
 import 'providers/app_state.dart';
 import 'providers/planning_state.dart';
@@ -15,26 +15,14 @@ import 'services/attendance_service.dart';
 import 'services/battery_service.dart';
 import 'services/planning_prefs_service.dart';
 import 'services/update_check_service.dart';
+import 'services/desktop_service.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    await windowManager.ensureInitialized();
-
-    const windowOptions = WindowOptions(
-      size: Size(450, 715),
-      center: true,
-      backgroundColor: Colors.transparent,
-      skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.normal,
-    );
-
-    await windowManager.waitUntilReadyToShow(windowOptions, () async {
-      await windowManager.show();
-      await windowManager.focus();
-    });
+    await DesktopService.init();
   }
 
   runApp(const MyApp());
@@ -57,12 +45,18 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) {
             final state = PlanningState();
-            AndroidAlarmManager.initialize().then((_) {
+            void initOthers() {
               AttendanceNotificationService.init().then((_) {
                 BatteryService.ensureExempt();
                 state.initialize();
               });
-            });
+            }
+
+            if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+              initOthers();
+            } else {
+              AndroidAlarmManager.initialize().then((_) => initOthers());
+            }
             return state;
           },
         ),

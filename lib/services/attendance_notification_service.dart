@@ -1,3 +1,5 @@
+import 'desktop_notification_service.dart';
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -79,10 +81,14 @@ class AttendanceNotificationService {
   static Future<void> init() async {
     if (_initialized) return;
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      await DesktopNotificationService.init();
+      _initialized = true;
       return;
     }
 
-    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const android = AndroidInitializationSettings(
+      '@drawable/ic_launcher_foreground',
+    );
     const ios = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -154,6 +160,10 @@ class AttendanceNotificationService {
   /// Request notification permissions (Android 13+, iOS).
   static Future<bool> requestPermission() async {
     if (!_initialized) return false;
+
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return true;
+    }
 
     final android = _plugin
         .resolvePlatformSpecificImplementation<
@@ -251,6 +261,7 @@ class AttendanceNotificationService {
             playSound: timing.urgent,
             urgent: timing.urgent,
             payload: slotKey,
+            slotEnd: slotEnd,
           );
           _scheduledIds.add(id);
           _scheduledSlotByNotifId[id] = slotKey;
@@ -278,16 +289,26 @@ class AttendanceNotificationService {
           'AttendanceNotif: Scheduling pre-notif sync alarm $alarmId at $finalAlarmTime for notif $notifId ($slotKey)',
         );
 
-        await AndroidAlarmManager.oneShotAt(
-          finalAlarmTime,
-          alarmId,
-          BackgroundSyncService.syncAttendanceStatus,
-          exact: true,
-          wakeup: true,
-          alarmClock: false,
-          params: {'slotKey': slotKey, 'notifIds': slotNotifIds},
-        );
-        _scheduledAlarmByNotifId[notifId] = alarmId;
+        if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
+          await AndroidAlarmManager.oneShotAt(
+            finalAlarmTime,
+            alarmId,
+            BackgroundSyncService.syncAttendanceStatus,
+            exact: true,
+            wakeup: true,
+            alarmClock:
+                true, // Requires SCHEDULE_EXACT_ALARM permission, which we already have
+            params: {'slotKey': slotKey, 'notifIds': slotNotifIds},
+          );
+        } else {
+          // On Desktop, just schedule a Timer to trigger sync.
+          Timer(finalAlarmTime.difference(DateTime.now()), () {
+            BackgroundSyncService.syncAttendanceStatus(alarmId, {
+              'slotKey': slotKey,
+              'notifIds': slotNotifIds,
+            });
+          });
+        }
       }
     }
     debugPrint(
@@ -297,6 +318,11 @@ class AttendanceNotificationService {
 
   /// Cancel all previously scheduled notifications.
   static Future<void> _cancelPrevious() async {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      DesktopNotificationService.cancelAll();
+    }
+
+    final slotKeys = _scheduledSlotByNotifId.values.toSet();
     try {
       await _plugin.cancelAll();
       debugPrint('AttendanceNotif: cancelAll succeeded');
@@ -311,10 +337,12 @@ class AttendanceNotificationService {
       }
     }
 
-    for (final alarmId in _scheduledAlarmByNotifId.values.toSet()) {
-      try {
-        await AndroidAlarmManager.cancel(alarmId);
-      } catch (_) {}
+    for (final slotKey in slotKeys) {
+      if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
+        try {
+          await AndroidAlarmManager.cancel(slotKey.hashCode.abs());
+        } catch (_) {}
+      }
     }
 
     _scheduledIds.clear();
@@ -339,6 +367,9 @@ class AttendanceNotificationService {
     if (idsToCancel.isEmpty) return;
 
     for (final id in idsToCancel) {
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        DesktopNotificationService.cancel(id);
+      }
       try {
         await _plugin.cancel(id);
       } catch (_) {}
@@ -353,6 +384,12 @@ class AttendanceNotificationService {
       _scheduledIds.remove(id);
       _scheduledSlotByNotifId.remove(id);
       _scheduledAlarmByNotifId.remove(id);
+    }
+
+    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
+      try {
+        await AndroidAlarmManager.cancel(slotKey.hashCode.abs());
+      } catch (_) {}
     }
 
     debugPrint(
@@ -386,14 +423,29 @@ class AttendanceNotificationService {
     required DateTime scheduledTime,
     required bool playSound,
     required String payload,
+    required DateTime slotEnd,
     bool urgent = false,
   }) async {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      DesktopNotificationService.scheduleNotification(
+        id: id,
+        title: title,
+        body: body,
+        scheduledTime: scheduledTime,
+        payload: payload,
+        urgent: urgent,
+        slotEnd: slotEnd,
+      );
+      return;
+    }
+
     final androidDetails = AndroidNotificationDetails(
       playSound ? 'emargator_sound' : 'emargator_silent',
       playSound ? 'Rappels d\'émargement urgents' : 'Rappels d\'émargement',
       channelDescription: playSound
           ? 'Notifications avec son et vibration'
           : 'Notifications vibration seule (sans son)',
+      icon: '@drawable/ic_launcher_foreground',
       importance: Importance.max,
       priority: Priority.max,
       enableVibration: true,
