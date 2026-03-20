@@ -1,18 +1,31 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:launch_at_startup/launch_at_startup.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
+import 'desktop_prefs_service.dart';
 
 class DesktopService {
-  static const String _trayIconAsset = 'assets/icon.png';
+  static const String _trayIconAsset = 'assets/icon-desktop.png';
+  static const String _packageName = 'fr.crazycat256.emargator';
   static final DesktopWindowListener _listener = DesktopWindowListener();
+  static bool _windowReady = false;
+  static bool _pendingBringToFront = false;
+
+  static bool get isDesktopPlatform =>
+      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
   static Future<void> init() async {
-    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
+    if (!isDesktopPlatform) return;
+
+    await _setupLaunchAtStartup();
 
     await windowManager.ensureInitialized();
-    await windowManager.setPreventClose(true); // Don't close the app directly
+    final keepRunningInBackgroundOnClose =
+        await DesktopPrefsService.getKeepRunningInBackgroundOnClose();
+    await windowManager.setPreventClose(keepRunningInBackgroundOnClose);
 
     windowManager.addListener(_listener);
     trayManager.addListener(_listener);
@@ -28,9 +41,72 @@ class DesktopService {
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.show();
       await windowManager.focus();
+      _windowReady = true;
+
+      if (_pendingBringToFront) {
+        _pendingBringToFront = false;
+        await bringToFront();
+      }
     });
 
     await _initTray();
+  }
+
+  static Future<void> _setupLaunchAtStartup() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      launchAtStartup.setup(
+        appName: packageInfo.appName,
+        appPath: Platform.resolvedExecutable,
+        packageName: _packageName,
+      );
+    } catch (_) {}
+  }
+
+  static Future<bool> getLaunchAtStartupEnabled() async {
+    if (!isDesktopPlatform) return false;
+    try {
+      return await launchAtStartup.isEnabled();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> setLaunchAtStartupEnabled(bool enabled) async {
+    if (!isDesktopPlatform) return;
+    if (enabled) {
+      await launchAtStartup.enable();
+    } else {
+      await launchAtStartup.disable();
+    }
+  }
+
+  static Future<bool> getKeepRunningInBackgroundOnClose() {
+    return DesktopPrefsService.getKeepRunningInBackgroundOnClose();
+  }
+
+  static Future<void> setKeepRunningInBackgroundOnClose(bool enabled) async {
+    await DesktopPrefsService.setKeepRunningInBackgroundOnClose(enabled);
+    if (isDesktopPlatform) {
+      await windowManager.setPreventClose(enabled);
+    }
+  }
+
+  static Future<void> bringToFront() async {
+    if (!isDesktopPlatform) return;
+
+    if (!_windowReady) {
+      _pendingBringToFront = true;
+      return;
+    }
+
+    final isMinimized = await windowManager.isMinimized();
+    if (isMinimized) {
+      await windowManager.restore();
+    }
+
+    await windowManager.show();
+    await windowManager.focus();
   }
 
   static Future<void> _initTray() async {

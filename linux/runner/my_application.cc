@@ -5,6 +5,8 @@
 #include <gdk/gdkx.h>
 #endif
 
+#include <glib.h>
+
 #include "flutter/generated_plugin_registrant.h"
 
 struct _MyApplication {
@@ -18,6 +20,37 @@ G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 static void first_frame_cb(MyApplication* self, FlView *view)
 {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
+}
+
+static void apply_window_icon(GtkWindow* window) {
+  g_autofree gchar* executable_path = g_file_read_link("/proc/self/exe", nullptr);
+  if (executable_path == nullptr) {
+    return;
+  }
+
+  g_autofree gchar* executable_dir = g_path_get_dirname(executable_path);
+  g_autofree gchar* icon_path = g_build_filename(
+      executable_dir,
+      "data",
+      "flutter_assets",
+      "assets",
+      "icon-desktop.png",
+      nullptr);
+
+  if (!g_file_test(icon_path, G_FILE_TEST_EXISTS)) {
+    return;
+  }
+
+  g_autoptr(GError) error = nullptr;
+  g_autoptr(GdkPixbuf) icon = gdk_pixbuf_new_from_file(icon_path, &error);
+  if (icon == nullptr) {
+    g_warning("Unable to load app icon from %s: %s", icon_path,
+              error != nullptr ? error->message : "unknown error");
+    return;
+  }
+
+  gtk_window_set_default_icon(icon);
+  gtk_window_set_icon(window, icon);
 }
 
 // Implements GApplication::activate.
@@ -54,6 +87,7 @@ static void my_application_activate(GApplication* application) {
   }
 
   gtk_window_set_default_size(window, 1280, 720);
+  apply_window_icon(window);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(project, self->dart_entrypoint_arguments);

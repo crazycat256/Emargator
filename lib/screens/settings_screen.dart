@@ -1,7 +1,10 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../providers/planning_state.dart';
+import '../services/desktop_service.dart';
 import '../services/planning_prefs_service.dart';
 import 'about_screen.dart';
 import 'group_selection_screen.dart';
@@ -27,6 +30,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _notifEnabled = true;
   int _notifCount = 0;
   int _urgentNotifCount = 0;
+  bool _launchAtStartup = false;
+  bool _keepRunningInBackgroundOnClose = true;
+  bool _desktopOptionsLoaded = false;
+
+  bool get _isDesktopPlatform =>
+      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
   @override
   void initState() {
@@ -54,6 +63,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final notifRules = await PlanningPrefsService.getNotificationRules();
     final notifCount = notifRules.length;
     final urgentCount = notifRules.where((r) => r.urgent).length;
+
+    bool launchAtStartup = false;
+    bool keepRunningInBackgroundOnClose = true;
+    bool desktopOptionsLoaded = false;
+    if (_isDesktopPlatform) {
+      launchAtStartup = await DesktopService.getLaunchAtStartupEnabled();
+      keepRunningInBackgroundOnClose =
+          await DesktopService.getKeepRunningInBackgroundOnClose();
+      desktopOptionsLoaded = true;
+    }
+
     setState(() {
       if (studentId != null) {
         _studentIdController.text = studentId;
@@ -63,6 +83,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _notifEnabled = notifEnabled;
       _notifCount = notifCount;
       _urgentNotifCount = urgentCount;
+      _launchAtStartup = launchAtStartup;
+      _keepRunningInBackgroundOnClose = keepRunningInBackgroundOnClose;
+      _desktopOptionsLoaded = desktopOptionsLoaded;
       _isInitialized = true;
     });
   }
@@ -97,6 +120,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
           enabled ? 'Notifications activées' : 'Notifications désactivées',
         ),
         backgroundColor: enabled ? Colors.green : Colors.orange,
+      ),
+    );
+  }
+
+  Future<void> _setLaunchAtStartup(bool enabled) async {
+    await DesktopService.setLaunchAtStartupEnabled(enabled);
+    if (!mounted) return;
+    setState(() => _launchAtStartup = enabled);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          enabled
+              ? 'Lancement automatique activé'
+              : 'Lancement automatique désactivé',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _setKeepRunningInBackgroundOnClose(bool enabled) async {
+    await DesktopService.setKeepRunningInBackgroundOnClose(enabled);
+    if (!mounted) return;
+    setState(() => _keepRunningInBackgroundOnClose = enabled);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          enabled
+              ? 'La fermeture via la croix réduit maintenant en arrière-plan'
+              : 'La fermeture via la croix ferme maintenant complètement l’application',
+        ),
       ),
     );
   }
@@ -240,6 +293,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 16),
               _buildPlanningSection(context),
+              if (_isDesktopPlatform) ...[
+                const SizedBox(height: 40),
+                const Divider(),
+                const SizedBox(height: 16),
+                const Text(
+                  'Comportement desktop',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: _desktopOptionsLoaded
+                      ? Column(
+                          children: [
+                            SwitchListTile(
+                              value: _launchAtStartup,
+                              title: const Text(
+                                'Lancer au démarrage du système',
+                              ),
+                              subtitle: const Text(
+                                'Démarre automatiquement Emargator à l’ouverture de session',
+                              ),
+                              onChanged: _setLaunchAtStartup,
+                            ),
+                            SwitchListTile(
+                              value: _keepRunningInBackgroundOnClose,
+                              title: const Text(
+                                'Rester en arrière-plan à la fermeture',
+                              ),
+                              subtitle: const Text(
+                                'Quand vous cliquez sur la croix, l’application est masquée au lieu d’être fermée',
+                              ),
+                              onChanged: _setKeepRunningInBackgroundOnClose,
+                            ),
+                          ],
+                        )
+                      : const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: LinearProgressIndicator(),
+                        ),
+                ),
+              ],
             ],
           ),
         ),

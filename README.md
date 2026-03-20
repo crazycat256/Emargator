@@ -75,6 +75,31 @@ Emargator automatise le processus d'émargement en ligne sur Moodle. L'applicati
    flutter build macos        # macOS
    ```
 
+### Packaging desktop installable (Fastforge)
+
+Pour générer des paquets installables desktop :
+
+```bash
+dart pub global activate fastforge
+```
+
+- Linux (.deb)
+
+   ```bash
+   fastforge package --platform linux --targets deb
+   ```
+
+- Windows (installateur .exe)
+
+   ```bash
+   fastforge package --platform windows --targets exe
+   ```
+
+Les fichiers de configuration Fastforge sont dans :
+
+- `linux/packaging/deb/make_config.yaml`
+- `windows/packaging/exe/make_config.yaml`
+
 ## Licence
 
 Ce projet est sous licence GPLv3. Voir le fichier [LICENSE](LICENSE) pour plus de détails.

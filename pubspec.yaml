@@ -51,6 +51,7 @@ dependencies:
   android_alarm_manager_plus: ^5.0.0
   local_notifier: ^0.1.6
   tray_manager: ^0.5.2
+  launch_at_startup: ^0.5.1
 
 
 dev_dependencies:
@@ -79,14 +80,14 @@ flutter_launcher_icons:
     generate: false
   windows:
     generate: true
-    image_path: assets/icon.png
+    image_path: assets/icon-desktop.png
     icon_size: 48
   macos:
     generate: true
-    image_path: assets/icon.png
+    image_path: assets/icon-desktop.png
   linux:
     generate: true
-    image_path: assets/icon.png
+    image_path: assets/icon-desktop.png
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -101,6 +102,7 @@ flutter:
 
   assets:
     - assets/icon.png
+    - assets/icon-desktop.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

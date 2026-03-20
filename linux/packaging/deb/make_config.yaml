@@ -1,0 +1,22 @@
+display_name: Emargator
+package_name: emargator
+maintainer:
+  name: Victor
+  email: noreply@users.noreply.github.com
+priority: optional
+section: utils
+installed_size: 7000
+essential: false
+icon: assets/icon-desktop.png
+
+keywords:
+  - Emargement
+  - Moodle
+  - UBS
+
+generic_name: Assistant d'émargement
+categories:
+  - Utility
+  - Education
+
+startup_notify: true

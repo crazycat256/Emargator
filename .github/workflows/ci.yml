@@ -90,7 +90,7 @@ jobs:
           path: build/app/outputs/flutter-apk/app-release.apk
 
   build_linux:
-    name: Build Linux executable
+    name: Build Linux installer (.deb)
     runs-on: ubuntu-latest
     needs: security_scan
     steps:
@@ -105,7 +105,8 @@ jobs:
             pkg-config \
             libgtk-3-dev \
             liblzma-dev \
-            libsecret-1-dev
+            libsecret-1-dev \
+            libayatana-appindicator3-dev
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -114,19 +115,32 @@ jobs:
           architecture: x64
       - name: Flutter pub get
         run: flutter pub get
-      - name: Build Linux release
-        run: flutter build linux --release -v
-      - name: Package Linux bundle
+      - name: Install Fastforge
         run: |
-          tar -czf build/linux/x64/release/emargator-linux.tar.gz -C build/linux/x64/release/bundle .
-      - name: Upload Linux artifact
+          dart pub global activate fastforge
+          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
+      - name: Build Linux deb package (Fastforge)
+        run: fastforge package --platform linux --targets deb
+      - name: Collect Linux deb artifact
+        id: collect_linux_deb
+        run: |
+          set -euo pipefail
+          deb_path=$(find dist build -type f -name '*.deb' | head -n1 || true)
+          if [ -z "$deb_path" ]; then
+            echo "No .deb artifact found after Fastforge packaging." >&2
+            exit 1
+          fi
+          mkdir -p build/packaged
+          cp "$deb_path" build/packaged/emargator-linux.deb
+          echo "deb_path=build/packaged/emargator-linux.deb" >> "$GITHUB_OUTPUT"
+      - name: Upload Linux .deb artifact
         uses: actions/upload-artifact@v4
         with:
-          name: linux-binary
-          path: build/linux/x64/release/emargator-linux.tar.gz
+          name: linux-deb
+          path: ${{ steps.collect_linux_deb.outputs.deb_path }}
 
   build_windows:
-    name: Build Windows executable
+    name: Build Windows installer (.exe)
     runs-on: windows-latest
     needs: security_scan
 
@@ -141,52 +155,55 @@ jobs:
       
       - name: Install MSVC Build Tools
         uses: microsoft/setup-msbuild@v2
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
       
       - name: Flutter pub get
         run: flutter pub get
-      
-      - name: Build Windows release
-        run: flutter build windows --release
-      
-      - name: Copy MSVC runtime DLLs
+
+      - name: Install Fastforge
         shell: pwsh
         run: |
-          $outputDir = "build/windows/x64/runner/Release"
-          Copy-Item "C:\Windows\System32\msvcp140.dll" $outputDir -Force
-          Copy-Item "C:\Windows\System32\vcruntime140.dll" $outputDir -Force
-          Copy-Item "C:\Windows\System32\vcruntime140_1.dll" $outputDir -Force
+          dart pub global activate fastforge
+          "$env:USERPROFILE\\AppData\\Local\\Pub\\Cache\\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       
-      - name: Package Windows bundle
-        id: package_windows
+      - name: Build Windows installer (Fastforge)
+        shell: pwsh
+        run: fastforge package --platform windows --targets exe
+      
+      - name: Collect Windows installer artifact
+        id: collect_windows_installer
         shell: pwsh
         run: |
-          $candidates = @(
-            "build/windows/x64/runner/Release",
-            "build/windows/runner/Release"
-          )
-          $outputDir = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (-not $outputDir) {
-            throw "Unable to locate Windows release output directory."
+          $setupCandidate = Get-ChildItem -Path dist,build -Filter *.exe -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '(?i)(setup|installer)' } |
+            Select-Object -First 1
+
+          if (-not $setupCandidate) {
+            $setupCandidate = Get-ChildItem -Path dist,build -Filter *.exe -Recurse -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -notmatch 'runner[\\/]Release' } |
+              Select-Object -First 1
           }
 
-          $destination = "build/windows/emargator-windows.zip"
+          if (-not $setupCandidate) {
+            throw "No Windows installer .exe found after Fastforge packaging."
+          }
+
+          $destination = "build/packaged/emargator-windows-setup.exe"
           $destDir = Split-Path -Parent $destination
           if (-not (Test-Path $destDir)) {
             New-Item -ItemType Directory -Path $destDir -Force | Out-Null
           }
 
-          if (Test-Path $destination) {
-            Remove-Item $destination -Force
-          }
-
-          Compress-Archive -Path (Join-Path $outputDir '*') -DestinationPath $destination -Force
-          "zip_path=$destination" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Copy-Item $setupCandidate.FullName $destination -Force
+          "installer_path=$destination" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
       
-      - name: Upload Windows artifact
+      - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-executable
-          path: ${{ steps.package_windows.outputs.zip_path }}
+          name: windows-installer
+          path: ${{ steps.collect_windows_installer.outputs.installer_path }}
 
   prepare_release:
     name: Prepare release metadata
@@ -276,12 +293,12 @@ jobs:
       - name: Download Linux artifact
         uses: actions/download-artifact@v4
         with:
-          name: linux-binary
+          name: linux-deb
           path: release_artifacts/linux
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
-          name: windows-executable
+          name: windows-installer
           path: release_artifacts/windows
       - name: Create GitHub Release
         id: create_release
@@ -303,21 +320,21 @@ jobs:
           asset_path: release_artifacts/android/app-release.apk
           asset_name: emargator-${{ env.RELEASE_TAG }}.apk
           asset_content_type: application/vnd.android.package-archive
-      - name: Upload Linux binary to release
+      - name: Upload Linux deb to release
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: release_artifacts/linux/emargator-linux.tar.gz
-          asset_name: emargator-${{ env.RELEASE_TAG }}-linux.tar.gz
-          asset_content_type: application/gzip
-      - name: Upload Windows executable to release
+          asset_path: release_artifacts/linux/emargator-linux.deb
+          asset_name: emargator-${{ env.RELEASE_TAG }}-linux.deb
+          asset_content_type: application/vnd.debian.binary-package
+      - name: Upload Windows installer to release
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: release_artifacts/windows/emargator-windows.zip
-          asset_name: emargator-${{ env.RELEASE_TAG }}-windows.zip
-          asset_content_type: application/zip
+          asset_path: release_artifacts/windows/emargator-windows-setup.exe
+          asset_name: emargator-${{ env.RELEASE_TAG }}-windows-setup.exe
+          asset_content_type: application/vnd.microsoft.portable-executable

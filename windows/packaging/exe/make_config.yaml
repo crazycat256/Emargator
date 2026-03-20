@@ -1,0 +1,9 @@
+app_id: 8C55F77E-DF8D-4A7A-9A75-9F4A22E7F938
+publisher: crazycat256
+publisher_url: https://github.com/crazycat256/Emargator
+display_name: Emargator
+create_desktop_icon: true
+setup_icon_file: windows\runner\resources\app_icon.ico
+locales:
+  - en
+  - fr

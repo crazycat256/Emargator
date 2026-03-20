@@ -16,12 +16,19 @@ import 'services/battery_service.dart';
 import 'services/planning_prefs_service.dart';
 import 'services/update_check_service.dart';
 import 'services/desktop_service.dart';
+import 'services/desktop_single_instance_service.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    final isPrimaryInstance =
+        await DesktopSingleInstanceService.ensurePrimaryInstance();
+    if (!isPrimaryInstance) {
+      return;
+    }
+
     await DesktopService.init();
   }
 
