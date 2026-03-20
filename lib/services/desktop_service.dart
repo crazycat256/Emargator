@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:tray_manager/tray_manager.dart';
@@ -8,7 +7,7 @@ import 'package:window_manager/window_manager.dart';
 import 'desktop_prefs_service.dart';
 
 class DesktopService {
-  static const String _trayIconAsset = 'assets/icon-desktop.png';
+  static const String _trayIconAsset = 'assets/icon-tray.png';
   static const String _packageName = 'fr.crazycat256.emargator';
   static final DesktopWindowListener _listener = DesktopWindowListener();
   static bool _windowReady = false;
@@ -110,8 +109,7 @@ class DesktopService {
   }
 
   static Future<void> _initTray() async {
-    final iconPath = await _resolveTrayIconPath();
-    await trayManager.setIcon(iconPath);
+    await trayManager.setIcon(_trayIconAsset);
     Menu menu = Menu(
       items: [
         MenuItem(key: 'show_window', label: 'Afficher Emargator'),
@@ -120,18 +118,6 @@ class DesktopService {
       ],
     );
     await trayManager.setContextMenu(menu);
-  }
-
-  static Future<String> _resolveTrayIconPath() async {
-    try {
-      final byteData = await rootBundle.load(_trayIconAsset);
-      final bytes = byteData.buffer.asUint8List();
-      final file = File('${Directory.systemTemp.path}/emargator_tray_icon.png');
-      await file.writeAsBytes(bytes, flush: true);
-      return file.path;
-    } catch (_) {
-      return _trayIconAsset;
-    }
   }
 }
 
