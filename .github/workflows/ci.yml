@@ -81,6 +81,8 @@ jobs:
       # actionlint: enable=expr
       - name: Flutter pub get
         run: flutter pub get
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons
       - name: Build release APK
         run: flutter build apk --release -v
       - name: Upload APK artifact

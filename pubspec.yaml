@@ -72,7 +72,7 @@ flutter_launcher_icons:
   image_path_android: assets/icon.png
   image_path: assets/icon.png
   adaptive_icon_foreground: assets/icon.png
-  adaptive_icon_monochrome: assets/icon.png
+  adaptive_icon_monochrome: assets/icon-tray.png
   adaptive_icon_background: "#FFFFFF"
   background_color_ios: "#FFFFFF"
   remove_alpha_ios: true

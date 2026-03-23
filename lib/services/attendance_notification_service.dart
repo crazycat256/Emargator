@@ -32,6 +32,7 @@ typedef OnIgnoreSlot = Future<void> Function(String slotKey);
 class AttendanceNotificationService {
   static const _slotDurationSeconds = 90 * 60;
   static const _syncLeadTime = Duration(seconds: 30);
+  static const _androidNotificationIcon = '@drawable/ic_launcher_monochrome';
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
@@ -86,9 +87,7 @@ class AttendanceNotificationService {
       return;
     }
 
-    const android = AndroidInitializationSettings(
-      '@drawable/ic_launcher_foreground',
-    );
+    const android = AndroidInitializationSettings(_androidNotificationIcon);
     const ios = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -445,7 +444,7 @@ class AttendanceNotificationService {
       channelDescription: playSound
           ? 'Notifications avec son et vibration'
           : 'Notifications vibration seule (sans son)',
-      icon: '@drawable/ic_launcher_foreground',
+      icon: _androidNotificationIcon,
       importance: Importance.max,
       priority: Priority.max,
       enableVibration: true,
