@@ -7,7 +7,9 @@ import 'package:window_manager/window_manager.dart';
 import 'desktop_prefs_service.dart';
 
 class DesktopService {
-  static const String _trayIconAsset = 'assets/icon-tray.png';
+  static const String _trayIconAsset = 'assets/tray/icon-tray.png';
+  static const String _windowsTrayIconAsset =
+      'assets/tray/windows/icon-tray.ico';
   static const String _packageName = 'fr.crazycat256.emargator';
   static final DesktopWindowListener _listener = DesktopWindowListener();
   static bool _windowReady = false;
@@ -109,7 +111,10 @@ class DesktopService {
   }
 
   static Future<void> _initTray() async {
-    await trayManager.setIcon(_trayIconAsset);
+    final trayIconAsset = Platform.isWindows
+        ? _windowsTrayIconAsset
+        : _trayIconAsset;
+    await trayManager.setIcon(trayIconAsset);
     Menu menu = Menu(
       items: [
         MenuItem(key: 'show_window', label: 'Afficher Emargator'),

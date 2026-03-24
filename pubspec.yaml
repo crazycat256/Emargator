@@ -72,7 +72,7 @@ flutter_launcher_icons:
   image_path_android: assets/icon.png
   image_path: assets/icon.png
   adaptive_icon_foreground: assets/icon.png
-  adaptive_icon_monochrome: assets/icon-tray.png
+  adaptive_icon_monochrome: assets/tray/icon-tray.png
   adaptive_icon_background: "#FFFFFF"
   background_color_ios: "#FFFFFF"
   remove_alpha_ios: true
@@ -103,7 +103,12 @@ flutter:
   assets:
     - assets/icon.png
     - assets/icon-desktop.png
-    - assets/icon-tray.png
+    - assets/tray/icon-tray.png
+    - assets/tray/windows/icon-tray.ico
+    - assets/tray/windows/icon-tray-16.png
+    - assets/tray/windows/icon-tray-20.png
+    - assets/tray/windows/icon-tray-24.png
+    - assets/tray/windows/icon-tray-32.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:
