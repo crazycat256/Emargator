@@ -15,7 +15,6 @@ class NotificationSettingsScreen extends StatefulWidget {
 class _NotificationSettingsScreenState
     extends State<NotificationSettingsScreen> {
   List<PlanningNotificationRule> _rules = [];
-  bool _isSaving = false;
   static const _slotDurationSeconds = 90 * 60;
 
   @override
@@ -183,19 +182,20 @@ class _NotificationSettingsScreenState
     return result;
   }
 
-  Future<void> _saveRules() async {
+  Future<void> _persistRules() async {
     final planningState = context.read<PlanningState>();
-    setState(() => _isSaving = true);
-    await PlanningPrefsService.setNotificationRules(_rules);
-    await planningState.rescheduleNotifications();
-    if (!mounted) return;
-    setState(() => _isSaving = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Configuration des notifications enregistrée'),
-        backgroundColor: Colors.green,
-      ),
-    );
+    try {
+      await PlanningPrefsService.setNotificationRules(_rules);
+      await planningState.rescheduleNotifications();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Erreur lors de l\'enregistrement automatique'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -235,11 +235,15 @@ class _NotificationSettingsScreenState
                           _rules[i] = edited;
                           _sortRules();
                         });
+                        await _persistRules();
                       },
                     ),
                     IconButton(
                       icon: const Icon(Icons.delete_outline),
-                      onPressed: () => setState(() => _rules.removeAt(i)),
+                      onPressed: () async {
+                        setState(() => _rules.removeAt(i));
+                        await _persistRules();
+                      },
                     ),
                   ],
                 ),
@@ -255,21 +259,10 @@ class _NotificationSettingsScreenState
                 _rules.add(created);
                 _sortRules();
               });
+              await _persistRules();
             },
             icon: const Icon(Icons.add),
             label: const Text('Ajouter une notification'),
-          ),
-          const SizedBox(height: 12),
-          ElevatedButton.icon(
-            onPressed: _isSaving ? null : _saveRules,
-            icon: _isSaving
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.save_outlined),
-            label: const Text('Enregistrer'),
           ),
         ],
       ),

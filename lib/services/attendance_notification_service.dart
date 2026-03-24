@@ -300,13 +300,12 @@ class AttendanceNotificationService {
             params: {'slotKey': slotKey, 'notifIds': slotNotifIds},
           );
         } else {
-          // On Desktop, just schedule a Timer to trigger sync.
-          Timer(finalAlarmTime.difference(DateTime.now()), () {
-            BackgroundSyncService.syncAttendanceStatus(alarmId, {
-              'slotKey': slotKey,
-              'notifIds': slotNotifIds,
-            });
-          });
+          DesktopNotificationService.schedulePreNotificationSync(
+            alarmId: alarmId,
+            alarmTime: finalAlarmTime,
+            slotKey: slotKey,
+            notifIds: slotNotifIds,
+          );
         }
       }
     }
