@@ -56,6 +56,8 @@ class AppState extends ChangeNotifier {
     await loadErrors();
     await _loadMoodleCache();
     _hasAcceptedWarning = await _storageService.hasAcceptedWarning();
+    // Populate SharedPreferences credential cache for background isolates
+    await _storageService.ensureBackgroundCache();
     _isInitialized = true;
     if (_hasAcceptedWarning) {
       await _tryAutoConnect();

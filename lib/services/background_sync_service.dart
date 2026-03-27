@@ -12,15 +12,29 @@ class BackgroundSyncService {
   /// Returns false on any error (fail-safe: prefer showing notification).
   static Future<bool> checkSlotStatus(String slotKey) async {
     try {
+      // Try FlutterSecureStorage first (foreground), fall back to
+      // SharedPreferences cache (background-safe).
       final storage = StorageService();
-      final studentId = await storage.getStudentId();
-      final password = await storage.getPassword();
+      String? studentId = await storage.getStudentId();
+      String? password = await storage.getPassword();
+
+      if (studentId == null ||
+          studentId.isEmpty ||
+          password == null ||
+          password.isEmpty) {
+        debugPrint(
+          'BackgroundSync: Secure storage returned null, trying background cache',
+        );
+        final cached = await StorageService.getBackgroundCredentials();
+        studentId = cached.studentId;
+        password = cached.password;
+      }
 
       if (studentId == null ||
           password == null ||
           studentId.isEmpty ||
           password.isEmpty) {
-        debugPrint('BackgroundSync: Credentials not found');
+        debugPrint('BackgroundSync: Credentials not found (both sources)');
         return false;
       }
 
@@ -58,8 +72,8 @@ class BackgroundSyncService {
 
     try {
       final String slotKey = params['slotKey'] as String;
-      final List<int> notifIds =
-          (params['notifIds'] as List<dynamic>).cast<int>();
+      final List<int> notifIds = (params['notifIds'] as List<dynamic>)
+          .cast<int>();
 
       if (slotKey.isEmpty || notifIds.isEmpty) {
         debugPrint('BackgroundSync: Invalid params slotKey=$slotKey');
