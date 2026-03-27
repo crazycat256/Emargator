@@ -2,24 +2,9 @@ import 'dart:async';
 import 'dart:io' show Platform, Process;
 import 'package:local_notifier/local_notifier.dart';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'attendance_notification_service.dart';
 import 'background_sync_service.dart';
 import 'desktop_service.dart';
-
-class _DesktopPreSyncJob {
-  final int alarmId;
-  final DateTime alarmTime;
-  final String slotKey;
-  final List<int> notifIds;
-
-  const _DesktopPreSyncJob({
-    required this.alarmId,
-    required this.alarmTime,
-    required this.slotKey,
-    required this.notifIds,
-  });
-}
 
 class _DesktopScheduledNotification {
   final int id;
@@ -44,13 +29,11 @@ class _DesktopScheduledNotification {
 class DesktopNotificationService {
   static const Duration _watchdogInterval = Duration(seconds: 20);
   static const Duration _watchdogOverdueSlack = Duration(seconds: 2);
-  static const Duration _preSyncTimeout = Duration(seconds: 20);
+  static const Duration _moodleCheckTimeout = Duration(seconds: 20);
   static const Duration _catchUpCoalesceThreshold = Duration(seconds: 15);
   static final Map<int, Timer> _activeTimers = {};
   static final Map<int, DateTime> _scheduledTimes = {};
   static final Map<int, _DesktopScheduledNotification> _scheduledById = {};
-  static final Map<int, Timer> _preSyncTimers = {};
-  static final Map<int, _DesktopPreSyncJob> _preSyncJobs = {};
   static final Map<String, List<int>> _slotRequests = {};
   static Timer? _watchdogTimer;
 
@@ -135,134 +118,34 @@ class DesktopNotificationService {
 
   static Future<void> _runWatchdog() async {
     final now = DateTime.now();
-    final initialDueNotificationIds = <int>[];
-    final duePreSyncAlarmIds = <int>[];
+    final dueNotificationIds = <int>[];
 
     for (final entry in _scheduledById.entries) {
       final data = entry.value;
       if (!data.scheduledTime.isAfter(now.add(_watchdogOverdueSlack))) {
-        initialDueNotificationIds.add(entry.key);
+        dueNotificationIds.add(entry.key);
       }
     }
 
-    for (final entry in _preSyncJobs.entries) {
-      final job = entry.value;
-      if (!job.alarmTime.isAfter(now.add(_watchdogOverdueSlack))) {
-        duePreSyncAlarmIds.add(entry.key);
-      }
-    }
+    if (dueNotificationIds.isEmpty) return;
 
-    if (initialDueNotificationIds.isEmpty && duePreSyncAlarmIds.isEmpty) return;
+    dueNotificationIds.sort((a, b) {
+      final ta = _scheduledById[a]?.scheduledTime;
+      final tb = _scheduledById[b]?.scheduledTime;
+      if (ta == null && tb == null) return 0;
+      if (ta == null) return -1;
+      if (tb == null) return 1;
+      return ta.compareTo(tb);
+    });
 
     debugPrint(
       'DesktopNotification: Watchdog due scan '
-      '(now=${_ts(now)} notifIds=$initialDueNotificationIds preSyncAlarmIds=$duePreSyncAlarmIds)',
+      '(now=${_ts(now)} notifIds=$dueNotificationIds)',
     );
-
-    for (final alarmId in duePreSyncAlarmIds) {
-      await _runPreNotificationSync(alarmId, source: 'watchdog');
-    }
-
-    final postSyncNow = DateTime.now();
-    final dueNotificationIds =
-        _scheduledById.entries
-            .where(
-              (entry) => !entry.value.scheduledTime.isAfter(
-                postSyncNow.add(_watchdogOverdueSlack),
-              ),
-            )
-            .map((entry) => entry.key)
-            .toList()
-          ..sort((a, b) {
-            final ta = _scheduledById[a]?.scheduledTime;
-            final tb = _scheduledById[b]?.scheduledTime;
-            if (ta == null && tb == null) return 0;
-            if (ta == null) return -1;
-            if (tb == null) return 1;
-            return ta.compareTo(tb);
-          });
 
     for (final id in dueNotificationIds) {
       await _triggerScheduledNotification(id, source: 'watchdog');
     }
-  }
-
-  static void schedulePreNotificationSync({
-    required int alarmId,
-    required DateTime alarmTime,
-    required String slotKey,
-    required List<int> notifIds,
-  }) {
-    final now = DateTime.now();
-    final finalAlarmTime = alarmTime.isAfter(now)
-        ? alarmTime
-        : now.add(const Duration(seconds: 1));
-    final delay = finalAlarmTime.difference(now);
-
-    _preSyncTimers[alarmId]?.cancel();
-    _preSyncJobs[alarmId] = _DesktopPreSyncJob(
-      alarmId: alarmId,
-      alarmTime: finalAlarmTime,
-      slotKey: slotKey,
-      notifIds: List<int>.from(notifIds),
-    );
-
-    _ensureWatchdog();
-
-    _preSyncTimers[alarmId] = Timer(delay, () {
-      _runPreNotificationSync(alarmId, source: 'timer');
-    });
-
-    debugPrint(
-      'DesktopNotification: Scheduled pre-sync alarmId=$alarmId slotKey=$slotKey '
-      '(now=${_ts(now)} alarm=${_ts(finalAlarmTime)} delaySec=${delay.inSeconds} notifIds=${_preSyncJobs[alarmId]?.notifIds})',
-    );
-  }
-
-  static Future<void> _runPreNotificationSync(
-    int alarmId, {
-    required String source,
-  }) async {
-    final job = _preSyncJobs[alarmId];
-    if (job == null) {
-      debugPrint(
-        'DesktopNotification: Pre-sync source=$source alarmId=$alarmId skipped (already handled)',
-      );
-      return;
-    }
-
-    _preSyncTimers[alarmId]?.cancel();
-    _preSyncTimers.remove(alarmId);
-    _preSyncJobs.remove(alarmId);
-
-    debugPrint(
-      'DesktopNotification: Pre-sync source=$source alarmId=$alarmId slotKey=${job.slotKey} '
-      '(alarm=${_ts(job.alarmTime)} fired=${_ts(DateTime.now())} notifIds=${job.notifIds})',
-    );
-
-    try {
-      await BackgroundSyncService.syncAttendanceStatus(alarmId, {
-        'slotKey': job.slotKey,
-        'notifIds': job.notifIds,
-      }).timeout(_preSyncTimeout);
-    } catch (e) {
-      debugPrint(
-        'DesktopNotification: Pre-sync timeout/failure alarmId=$alarmId slotKey=${job.slotKey}: $e',
-      );
-    }
-
-    final signedInCache = await _isSlotSignedInCache(job.slotKey);
-    debugPrint(
-      'DesktopNotification: Pre-sync result alarmId=$alarmId slotKey=${job.slotKey} signed=$signedInCache',
-    );
-    if (!signedInCache) return;
-
-    for (final notifId in job.notifIds) {
-      cancel(notifId);
-    }
-    debugPrint(
-      'DesktopNotification: Pre-sync cancelled desktop notifications for slotKey=${job.slotKey} notifIds=${job.notifIds}',
-    );
   }
 
   static Future<void> _triggerScheduledNotification(
@@ -337,10 +220,20 @@ class DesktopNotificationService {
       }
     }
 
-    final signedInCache = await _isSlotSignedInCache(data.payload);
-    if (signedInCache) {
+    // Live Moodle check at notification time (replaces pre-notification sync)
+    bool alreadySigned = false;
+    try {
+      alreadySigned = await BackgroundSyncService.checkSlotStatus(data.payload)
+          .timeout(_moodleCheckTimeout);
+    } catch (e) {
       debugPrint(
-        'DesktopNotification: Ignored id=$id payload=${data.payload} because slot already signed in cache (source=$source)',
+        'DesktopNotification: Live Moodle check failed id=$id payload=${data.payload}: $e (will notify anyway)',
+      );
+    }
+
+    if (alreadySigned) {
+      debugPrint(
+        'DesktopNotification: Ignored id=$id payload=${data.payload} because slot already signed on Moodle (source=$source)',
       );
       return;
     }
@@ -364,13 +257,6 @@ class DesktopNotificationService {
       }
     }
     return false;
-  }
-
-  static Future<bool> _isSlotSignedInCache(String slotKey) async {
-    final prefs = await SharedPreferences.getInstance();
-    final cachedList = prefs.getStringList('moodle_signed_keys');
-    final signedKeys = cachedList?.toSet() ?? <String>{};
-    return signedKeys.contains(slotKey);
   }
 
   static Future<void> _show(
@@ -462,7 +348,7 @@ class DesktopNotificationService {
     };
 
     notification.onClick = () {
-      // Bring window to front
+      DesktopService.bringToFront();
     };
 
     return notification;
@@ -491,9 +377,9 @@ class DesktopNotificationService {
       args.addAll(['-r', id.toString()]);
 
       if (urgent) {
-        args.addAll(['-u', 'critical', '-t', '0']);
+        args.addAll(['-u', 'critical', '-t', '60000']);
       } else {
-        args.addAll(['-u', 'normal', '-t', '0']);
+        args.addAll(['-u', 'normal', '-t', '30000']);
       }
 
       args.addAll([title, body]);
@@ -554,21 +440,15 @@ class DesktopNotificationService {
 
   static void cancelAll() {
     final notifCount = _activeTimers.length;
-    final preSyncCount = _preSyncTimers.length;
     for (final timer in _activeTimers.values) {
-      timer.cancel();
-    }
-    for (final timer in _preSyncTimers.values) {
       timer.cancel();
     }
     _activeTimers.clear();
     _scheduledTimes.clear();
     _scheduledById.clear();
-    _preSyncTimers.clear();
-    _preSyncJobs.clear();
     _slotRequests.clear();
     debugPrint(
-      'DesktopNotification: Cancelled all timers notifCount=$notifCount preSyncCount=$preSyncCount',
+      'DesktopNotification: Cancelled all timers notifCount=$notifCount',
     );
   }
 }

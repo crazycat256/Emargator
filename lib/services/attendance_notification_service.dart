@@ -3,7 +3,6 @@ import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/timezone.dart' as tz;
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import '../services/time_slot_service.dart';
 import '../services/background_sync_service.dart';
@@ -31,7 +30,6 @@ typedef OnIgnoreSlot = Future<void> Function(String slotKey);
 /// Schedules attendance reminder notifications for time slots.
 class AttendanceNotificationService {
   static const _slotDurationSeconds = 90 * 60;
-  static const _syncLeadTime = Duration(seconds: 30);
   static const _androidNotificationIcon = '@drawable/ic_launcher_monochrome';
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -40,14 +38,10 @@ class AttendanceNotificationService {
   /// IDs of notifications we've scheduled (so we can cancel them individually).
   static final List<int> _scheduledIds = [];
   static final Map<int, String> _scheduledSlotByNotifId = {};
-  static final Map<int, int> _scheduledAlarmByNotifId = {};
 
   /// Callbacks set from outside (main.dart) to handle notification actions.
   static OnSignAttendance? onSignAttendance;
   static OnIgnoreSlot? onIgnoreSlot;
-
-  static int _alarmIdForNotification(int notificationId) =>
-      100000 + notificationId;
 
   static List<_SlotNotif> _buildNotifTimings(
     List<PlanningNotificationRule> rules,
@@ -228,9 +222,6 @@ class AttendanceNotificationService {
       final slotStart = slot.getStartTime(date);
       final slotEnd = slot.getEndTime(date);
 
-      final List<int> slotNotifIds = [];
-      final List<DateTime> slotNotifTimes = [];
-
       for (final timing in notifTimings) {
         final notifTime = timing.timingMode == NotificationTimingMode.afterStart
             ? slotStart.add(timing.offset)
@@ -254,7 +245,7 @@ class AttendanceNotificationService {
         try {
           await _scheduleNotification(
             id: id,
-            title: timing.urgent ? '🚨 Émargement URGENT' : 'Émargement requis',
+            title: timing.urgent ? '[URGENT] Émargement URGENT' : 'Émargement requis',
             body: body,
             scheduledTime: notifTime,
             playSound: timing.urgent,
@@ -264,48 +255,10 @@ class AttendanceNotificationService {
           );
           _scheduledIds.add(id);
           _scheduledSlotByNotifId[id] = slotKey;
-          slotNotifIds.add(id);
-          slotNotifTimes.add(notifTime);
           id++;
         } catch (e) {
           debugPrint('AttendanceNotif: failed to schedule id=$id: $e');
           id++;
-        }
-      }
-
-      // Schedule one background sync check 30s before each notification.
-      // If the slot is already signed on Moodle, that check cancels all remaining slot notifs.
-      for (int index = 0; index < slotNotifIds.length; index++) {
-        final notifId = slotNotifIds[index];
-        final notifTime = slotNotifTimes[index];
-        final alarmTime = notifTime.subtract(_syncLeadTime);
-        final finalAlarmTime = alarmTime.isAfter(now)
-            ? alarmTime
-            : now.add(const Duration(seconds: 1));
-        final alarmId = _alarmIdForNotification(notifId);
-
-        debugPrint(
-          'AttendanceNotif: Scheduling pre-notif sync alarm $alarmId at $finalAlarmTime for notif $notifId ($slotKey)',
-        );
-
-        if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
-          await AndroidAlarmManager.oneShotAt(
-            finalAlarmTime,
-            alarmId,
-            BackgroundSyncService.syncAttendanceStatus,
-            exact: true,
-            wakeup: true,
-            alarmClock:
-                true, // Requires SCHEDULE_EXACT_ALARM permission, which we already have
-            params: {'slotKey': slotKey, 'notifIds': slotNotifIds},
-          );
-        } else {
-          DesktopNotificationService.schedulePreNotificationSync(
-            alarmId: alarmId,
-            alarmTime: finalAlarmTime,
-            slotKey: slotKey,
-            notifIds: slotNotifIds,
-          );
         }
       }
     }
@@ -314,38 +267,31 @@ class AttendanceNotificationService {
     );
   }
 
-  /// Cancel all previously scheduled notifications.
+  /// Cancel all previously scheduled notifications and alarms.
   static Future<void> _cancelPrevious() async {
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       DesktopNotificationService.cancelAll();
     }
 
-    final slotKeys = _scheduledSlotByNotifId.values.toSet();
+    // Cancel any already-shown notifications
     try {
       await _plugin.cancelAll();
-      debugPrint('AttendanceNotif: cancelAll succeeded');
     } catch (e) {
-      debugPrint(
-        'AttendanceNotif: cancelAll failed, cancelling individually: $e',
-      );
-      for (final id in _scheduledIds) {
-        try {
-          await _plugin.cancel(id);
-        } catch (_) {}
-      }
+      debugPrint('AttendanceNotif: cancelAll notifications failed: $e');
     }
 
-    for (final slotKey in slotKeys) {
-      if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
+    // Cancel all scheduled alarms (Android)
+    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
+      for (final id in _scheduledIds) {
         try {
-          await AndroidAlarmManager.cancel(slotKey.hashCode.abs());
+          await AndroidAlarmManager.cancel(id);
         } catch (_) {}
       }
     }
 
     _scheduledIds.clear();
     _scheduledSlotByNotifId.clear();
-    _scheduledAlarmByNotifId.clear();
+    debugPrint('AttendanceNotif: cancelled all previous');
   }
 
   static String? _currentSlotKeyNow() {
@@ -372,22 +318,14 @@ class AttendanceNotificationService {
         await _plugin.cancel(id);
       } catch (_) {}
 
-      final alarmId = _scheduledAlarmByNotifId[id];
-      if (alarmId != null) {
+      if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
         try {
-          await AndroidAlarmManager.cancel(alarmId);
+          await AndroidAlarmManager.cancel(id);
         } catch (_) {}
       }
 
       _scheduledIds.remove(id);
       _scheduledSlotByNotifId.remove(id);
-      _scheduledAlarmByNotifId.remove(id);
-    }
-
-    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
-      try {
-        await AndroidAlarmManager.cancel(slotKey.hashCode.abs());
-      } catch (_) {}
     }
 
     debugPrint(
@@ -413,7 +351,11 @@ class AttendanceNotificationService {
     return '${d.inMinutes} min';
   }
 
-  /// Schedule a notification via zonedSchedule (AlarmManager on Android).
+  /// Schedule a notification.
+  /// On Android: uses AndroidAlarmManager to set an alarm that will check
+  /// Moodle at fire time, then show the notification only if the slot is not
+  /// already signed.
+  /// On desktop: uses a Timer + live Moodle check at fire time.
   static Future<void> _scheduleNotification({
     required int id,
     required String title,
@@ -437,61 +379,27 @@ class AttendanceNotificationService {
       return;
     }
 
-    final androidDetails = AndroidNotificationDetails(
-      playSound ? 'emargator_sound' : 'emargator_silent',
-      playSound ? 'Rappels d\'émargement urgents' : 'Rappels d\'émargement',
-      channelDescription: playSound
-          ? 'Notifications avec son et vibration'
-          : 'Notifications vibration seule (sans son)',
-      icon: _androidNotificationIcon,
-      importance: Importance.max,
-      priority: Priority.max,
-      enableVibration: true,
-      playSound: playSound,
-      channelShowBadge: true,
-      fullScreenIntent: urgent,
-      ticker: urgent ? title : null,
-      category: urgent
-          ? AndroidNotificationCategory.alarm
-          : AndroidNotificationCategory.reminder,
-      visibility: NotificationVisibility.public,
-      actions: const <AndroidNotificationAction>[
-        AndroidNotificationAction(
-          _actionSign,
-          'Émarger',
-          showsUserInterface: true,
-        ),
-        AndroidNotificationAction(
-          _actionIgnore,
-          'Ignorer ce créneau',
-          cancelNotification: true,
-        ),
-      ],
-    );
-
-    final details = NotificationDetails(
-      android: androidDetails,
-      iOS: DarwinNotificationDetails(
-        presentAlert: true,
-        presentBadge: true,
-        presentSound: playSound,
-      ),
-    );
-
-    final tzTime = tz.TZDateTime.from(scheduledTime, tz.local);
-
-    await _plugin.zonedSchedule(
+    // Android: schedule an alarm that will check Moodle then show notification
+    await AndroidAlarmManager.oneShotAt(
+      scheduledTime,
       id,
-      title,
-      body,
-      tzTime,
-      details,
-      payload: payload,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
+      BackgroundSyncService.checkAndNotify,
+      exact: true,
+      wakeup: true,
+      allowWhileIdle: true,
+      params: {
+        'slotKey': payload,
+        'notifId': id,
+        'title': title,
+        'body': body,
+        'playSound': playSound,
+        'urgent': urgent,
+        'payload': payload,
+        'slotEndIso': slotEnd.toIso8601String(),
+      },
     );
     debugPrint(
-      'AttendanceNotif: scheduled #$id at $scheduledTime (tz=$tzTime)',
+      'AttendanceNotif: scheduled alarm #$id at $scheduledTime',
     );
   }
 }
