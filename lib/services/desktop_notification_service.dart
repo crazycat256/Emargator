@@ -223,8 +223,9 @@ class DesktopNotificationService {
     // Live Moodle check at notification time (replaces pre-notification sync)
     bool alreadySigned = false;
     try {
-      alreadySigned = await BackgroundSyncService.checkSlotStatus(data.payload)
-          .timeout(_moodleCheckTimeout);
+      alreadySigned = await BackgroundSyncService.checkSlotStatus(
+        data.payload,
+      ).timeout(_moodleCheckTimeout);
     } catch (e) {
       debugPrint(
         'DesktopNotification: Live Moodle check failed id=$id payload=${data.payload}: $e (will notify anyway)',
@@ -277,8 +278,21 @@ class DesktopNotificationService {
     );
 
     if (Platform.isLinux) {
+      // On Linux, prefer local_notifier (supports click/action callbacks via
+      // D-Bus).  Fall back to notify-send if local_notifier fails.
       debugPrint(
-        'DesktopNotification: Deliver id=$id payload=$payload via notify-send (Linux primary)',
+        'DesktopNotification: Deliver id=$id payload=$payload via local_notifier (Linux primary)',
+      );
+      final shownByLocal = await _showWithLocalNotifier(notification);
+      if (shownByLocal) {
+        debugPrint(
+          'DesktopNotification: Delivered id=$id payload=$payload via local_notifier',
+        );
+        return;
+      }
+
+      debugPrint(
+        'DesktopNotification: Fallback id=$id payload=$payload to notify-send',
       );
       final sentByNotifySend = await _showLinuxNotifySend(
         id,
@@ -289,17 +303,6 @@ class DesktopNotificationService {
       if (sentByNotifySend) {
         debugPrint(
           'DesktopNotification: Delivered id=$id payload=$payload via notify-send',
-        );
-        return;
-      }
-
-      debugPrint(
-        'DesktopNotification: Fallback id=$id payload=$payload to local_notifier',
-      );
-      final shownByLocal = await _showWithLocalNotifier(notification);
-      if (shownByLocal) {
-        debugPrint(
-          'DesktopNotification: Delivered id=$id payload=$payload via local_notifier',
         );
         return;
       }
