@@ -400,19 +400,16 @@ jobs:
       - name: Install APT repository tools
         run: sudo apt-get update && sudo apt-get install -y dpkg-dev apt-utils
 
-      - name: Checkout gh-pages branch
+      - name: Checkout gh-pages branch (last commit only, no history)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           REPO_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           if git ls-remote --exit-code --heads "${REPO_URL}" gh-pages > /dev/null 2>&1; then
-            git clone --single-branch --branch gh-pages "${REPO_URL}" gh-pages
+            git clone --depth 1 --single-branch --branch gh-pages "${REPO_URL}" gh-pages
           else
-            mkdir gh-pages && cd gh-pages
-            git init
-            git checkout --orphan gh-pages
-            git commit --allow-empty -m "Initialize gh-pages branch"
+            mkdir gh-pages
           fi
 
       - name: Download Linux .deb artifact
@@ -573,13 +570,15 @@ jobs:
           # Prevent Jekyll processing on GitHub Pages
           touch gh-pages/.nojekyll
 
-      - name: Commit and push to gh-pages
+      - name: Commit and push to gh-pages (force, single commit)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd gh-pages
+          git init
+          git checkout --orphan gh-pages
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Update APT repository – ${RELEASE_TAG}" || { echo "No changes to commit"; exit 0; }
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:gh-pages
+          git commit -m "APT repository – ${RELEASE_TAG}"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:gh-pages
