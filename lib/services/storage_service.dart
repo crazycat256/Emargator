@@ -10,9 +10,9 @@ class StorageService {
   static const _keyPassword = 'password';
   static const _keyWarningAccepted = 'warning_accepted';
 
-  // SharedPreferences keys for background-safe credential cache.
-  // FlutterSecureStorage uses Android KeyStore which can fail in background
-  // isolates.  SharedPreferences is always reliable.
+  // FlutterSecureStorage (Android KeyStore) can fail in background isolates.
+  // Credentials are also cached in SharedPreferences so background alarms can
+  // read them reliably.
   static const _bgCacheKey = 'bg_credentials_cache';
 
   Future<String?> _readOrReset(String key) async {
@@ -22,8 +22,7 @@ class StorageService {
       debugPrint(
         'StorageService: secure storage read failed for "$key": ${error.message}',
       );
-      // Do NOT delete all credentials here — the error may be transient
-      // (e.g. background isolate without Activity context).
+      // Do NOT wipe credentials — the error is likely transient (no Activity).
       return null;
     }
   }
@@ -31,7 +30,6 @@ class StorageService {
   Future<void> saveCredentials(String studentId, String password) async {
     await _storage.write(key: _keyStudentId, value: studentId);
     await _storage.write(key: _keyPassword, value: password);
-    // Also update the background-safe cache
     await _updateBackgroundCache(studentId, password);
   }
 
@@ -65,10 +63,6 @@ class StorageService {
     await _storage.write(key: _keyWarningAccepted, value: 'true');
   }
 
-  // ── Background-safe credential cache ──
-
-  /// Write credentials to SharedPreferences so background isolates can read
-  /// them without relying on FlutterSecureStorage / Android KeyStore.
   static Future<void> _updateBackgroundCache(
     String studentId,
     String password,
@@ -80,21 +74,19 @@ class StorageService {
     await prefs.setString(_bgCacheKey, payload);
   }
 
-  /// Populate the background cache from the currently stored credentials.
-  /// Call this once on app startup (foreground) to ensure the cache exists.
+  /// Warm up the background credential cache from SecureStorage.
+  /// Call once on foreground startup.
   Future<void> ensureBackgroundCache() async {
     final studentId = await getStudentId();
     final password = await getPassword();
     if (studentId != null &&
-        password != null &&
         studentId.isNotEmpty &&
+        password != null &&
         password.isNotEmpty) {
       await _updateBackgroundCache(studentId, password);
     }
   }
 
-  /// Read credentials from the SharedPreferences cache.  Works reliably in
-  /// background isolates where FlutterSecureStorage may fail.
   static Future<({String? studentId, String? password})>
   getBackgroundCredentials() async {
     try {

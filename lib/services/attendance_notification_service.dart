@@ -254,7 +254,9 @@ class AttendanceNotificationService {
         try {
           await _scheduleNotification(
             id: id,
-            title: timing.urgent ? '[URGENT] Émargement URGENT' : 'Émargement requis',
+            title: timing.urgent
+                ? '[URGENT] Émargement URGENT'
+                : 'Émargement requis',
             body: body,
             scheduledTime: notifTime,
             playSound: timing.urgent,
@@ -436,7 +438,9 @@ class AttendanceNotificationService {
     // Android: schedule notification natively
     final androidDetails = AndroidNotificationDetails(
       playSound ? 'emargator_sound' : 'emargator_silent',
-      playSound ? 'Rappels d\'\u00e9margement urgents' : 'Rappels d\'\u00e9margement',
+      playSound
+          ? 'Rappels d\'\u00e9margement urgents'
+          : 'Rappels d\'\u00e9margement',
       channelDescription: playSound
           ? 'Notifications avec son et vibration'
           : 'Notifications vibration seule (sans son)',
