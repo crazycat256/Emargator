@@ -394,6 +394,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ needs.prepare_release.outputs.release_tag }}
       RELEASE_IS_PRERELEASE: ${{ needs.prepare_release.outputs.is_prerelease }}
+      BUILD_NUMBER: ${{ github.run_number }}
       APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
     steps:
       - name: Install APT repository tools
@@ -438,6 +439,12 @@ jobs:
 
           ARCH=$(grep -oP '(?<=^Architecture: ).+' repack/DEBIAN/control)
           VERSION=$(grep -oP '(?<=^Version: ).+' repack/DEBIAN/control)
+
+          # For pre-releases, append build number so APT detects each new beta as an upgrade
+          if [ "${RELEASE_IS_PRERELEASE}" = "true" ]; then
+            VERSION="${VERSION}+${BUILD_NUMBER}"
+            sed -i "s/^Version:.*/Version: ${VERSION}/" repack/DEBIAN/control
+          fi
 
           # Set correct package name
           sed -i "s/^Package:.*/Package: ${PKG_NAME}/" repack/DEBIAN/control
