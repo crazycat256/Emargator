@@ -23,6 +23,8 @@ on:
         required: true
       ANDROID_KEY_PASSWORD:
         required: true
+      APT_GPG_PRIVATE_KEY:
+        required: true
 
 jobs:
   security_scan:
@@ -379,3 +381,198 @@ jobs:
           asset_path: release_artifacts/windows/emargator-windows-setup.exe
           asset_name: emargator-${{ env.RELEASE_TAG }}-windows-setup.exe
           asset_content_type: application/vnd.microsoft.portable-executable
+
+  update_apt_repo:
+    name: Update APT repository (gh-pages)
+    runs-on: ubuntu-latest
+    needs:
+      - prepare_release
+      - build_linux
+    if: ${{ needs.prepare_release.outputs.should_release == 'true' }}
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ needs.prepare_release.outputs.release_tag }}
+      RELEASE_IS_PRERELEASE: ${{ needs.prepare_release.outputs.is_prerelease }}
+      APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+    steps:
+      - name: Install APT repository tools
+        run: sudo apt-get update && sudo apt-get install -y dpkg-dev apt-utils
+
+      - name: Checkout gh-pages branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "${REPO_URL}" gh-pages > /dev/null 2>&1; then
+            git clone --single-branch --branch gh-pages "${REPO_URL}" gh-pages
+          else
+            mkdir gh-pages && cd gh-pages
+            git init
+            git checkout --orphan gh-pages
+            git commit --allow-empty -m "Initialize gh-pages branch"
+          fi
+
+      - name: Download Linux .deb artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-deb
+          path: deb-artifact
+
+      - name: Prepare and add .deb package
+        run: |
+          set -euo pipefail
+
+          if [ "${RELEASE_IS_PRERELEASE}" = "true" ]; then
+            PKG_NAME="emargator-beta"
+            CONFLICTS="emargator"
+          else
+            PKG_NAME="emargator"
+            CONFLICTS="emargator-beta"
+          fi
+
+          # Extract original .deb
+          mkdir -p repack
+          dpkg-deb -R deb-artifact/emargator-linux.deb repack/
+
+          ARCH=$(grep -oP '(?<=^Architecture: ).+' repack/DEBIAN/control)
+          VERSION=$(grep -oP '(?<=^Version: ).+' repack/DEBIAN/control)
+
+          # Set correct package name
+          sed -i "s/^Package:.*/Package: ${PKG_NAME}/" repack/DEBIAN/control
+
+          # Add Conflicts / Replaces so the two variants cannot coexist
+          grep -q '^Conflicts:' repack/DEBIAN/control \
+            && sed -i "s/^Conflicts:.*/Conflicts: ${CONFLICTS}/" repack/DEBIAN/control \
+            || echo "Conflicts: ${CONFLICTS}" >> repack/DEBIAN/control
+
+          grep -q '^Replaces:' repack/DEBIAN/control \
+            && sed -i "s/^Replaces:.*/Replaces: ${CONFLICTS}/" repack/DEBIAN/control \
+            || echo "Replaces: ${CONFLICTS}" >> repack/DEBIAN/control
+
+          # Rebuild .deb with the new control metadata
+          DEB_FILE="${PKG_NAME}_${VERSION}_${ARCH}.deb"
+          dpkg-deb -b repack/ "${DEB_FILE}"
+
+          # Remove previous versions of this package from the repo
+          rm -f "gh-pages/${PKG_NAME}_"*.deb
+
+          # Add the new .deb to the repo
+          cp "${DEB_FILE}" gh-pages/
+
+      - name: Generate APT repository metadata
+        run: |
+          cd gh-pages
+
+          # Packages index
+          dpkg-scanpackages --multiversion . /dev/null > Packages
+          gzip -k -f Packages
+
+          # Release file
+          apt-ftparchive release . > Release
+
+      - name: Sign repository with GPG
+        run: |
+          echo "${APT_GPG_PRIVATE_KEY}" | gpg --batch --import
+          cd gh-pages
+          gpg --batch --yes --armor --detach-sign -o Release.gpg Release
+          gpg --batch --yes --armor --clearsign -o InRelease Release
+          gpg --batch --yes --armor --export > public.key
+
+      - name: Generate index page
+        run: |
+          set -euo pipefail
+          REPO_URL="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
+          HAS_GPG="false"
+          [ -f gh-pages/public.key ] && HAS_GPG="true"
+
+          cat > gh-pages/index.html << 'HTMLEOF'
+          <!DOCTYPE html>
+          <html lang="fr">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Emargator – Dépôt APT</title>
+            <style>
+              body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+              h1 { border-bottom: 2px solid #0366d6; padding-bottom: .5rem; }
+              pre { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; padding: 1rem; overflow-x: auto; }
+              code { background: #f6f8fa; padding: .15em .3em; border-radius: 4px; font-size: 0.95em; }
+              .note { background: #fff8c5; border: 1px solid #d4a72c; border-radius: 6px; padding: .75rem 1rem; margin: 1rem 0; }
+              a { color: #0366d6; }
+            </style>
+          </head>
+          <body>
+            <h1>Emargator – Dépôt APT</h1>
+            <p>Ce dépôt APT fournit deux paquets :</p>
+            <ul>
+              <li><strong>emargator</strong> – version stable</li>
+              <li><strong>emargator-beta</strong> – version bêta (pré-release)</li>
+            </ul>
+            <p>Les deux paquets sont en conflit : un seul peut être installé à la fois.</p>
+
+            <h2>Installation</h2>
+
+            <div id="gpg-instructions" style="display:none;">
+              <h3>1. Importer la clé GPG</h3>
+              <pre>curl -fsSL __REPO_URL__/public.key | sudo gpg --dearmor -o /usr/share/keyrings/emargator.gpg</pre>
+
+              <h3>2. Ajouter le dépôt</h3>
+              <pre>echo "deb [signed-by=/usr/share/keyrings/emargator.gpg] __REPO_URL__ ./" \
+            | sudo tee /etc/apt/sources.list.d/emargator.list</pre>
+            </div>
+
+            <div id="nogpg-instructions" style="display:none;">
+              <h3>1. Ajouter le dépôt</h3>
+              <pre>echo "deb [trusted=yes] __REPO_URL__ ./" \
+            | sudo tee /etc/apt/sources.list.d/emargator.list</pre>
+            </div>
+
+            <h3 id="install-step-title">2. Installer</h3>
+            <pre>sudo apt update
+
+          # Version stable
+          sudo apt install emargator
+
+          # OU version bêta
+          sudo apt install emargator-beta</pre>
+
+            <h3 id="update-step-title">3. Mettre à jour</h3>
+            <pre>sudo apt update && sudo apt upgrade</pre>
+
+            <div class="note">
+              <strong>Note :</strong> <code>emargator</code> et <code>emargator-beta</code> ne peuvent pas
+              être installés en même temps. L'installation de l'un supprimera automatiquement l'autre.
+            </div>
+
+            <script>
+              var hasGpg = "__HAS_GPG__" === "true";
+              if (hasGpg) {
+                document.getElementById("gpg-instructions").style.display = "block";
+                document.getElementById("install-step-title").textContent = "3. Installer";
+                document.getElementById("update-step-title").textContent = "4. Mettre à jour";
+              } else {
+                document.getElementById("nogpg-instructions").style.display = "block";
+              }
+            </script>
+          </body>
+          </html>
+          HTMLEOF
+
+          sed -i "s|__REPO_URL__|${REPO_URL}|g" gh-pages/index.html
+          sed -i "s|__HAS_GPG__|${HAS_GPG}|g" gh-pages/index.html
+
+          # Prevent Jekyll processing on GitHub Pages
+          touch gh-pages/.nojekyll
+
+      - name: Commit and push to gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Update APT repository – ${RELEASE_TAG}" || { echo "No changes to commit"; exit 0; }
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:gh-pages

@@ -37,6 +37,35 @@ Emargator automatise le processus d'émargement en ligne sur Moodle. L'applicati
 
 - **[Releases GitHub](https://github.com/crazycat256/Emargator/releases)**
 
+### Linux (dépôt APT)
+
+Un dépôt APT est disponible via GitHub Pages. Il propose deux paquets :
+
+- **`emargator`** — version stable
+- **`emargator-beta`** — version bêta (pré-release)
+
+> [!NOTE]
+> Les deux paquets ne peuvent pas coexister : installer l'un supprime automatiquement l'autre.
+
+```bash
+# Importer la clé GPG
+curl -fsSL https://crazycat256.github.io/Emargator/public.key \
+  | sudo gpg --dearmor -o /usr/share/keyrings/emargator.gpg
+
+# Ajouter le dépôt
+echo "deb [signed-by=/usr/share/keyrings/emargator.gpg] https://crazycat256.github.io/Emargator/ ./" \
+  | sudo tee /etc/apt/sources.list.d/emargator.list
+
+# Installer la version stable
+sudo apt update && sudo apt install emargator
+
+# OU installer la version bêta
+sudo apt update && sudo apt install emargator-beta
+
+# Mettre à jour
+sudo apt update && sudo apt upgrade
+```
+
 ## Compilation
 
 ### Prérequis
