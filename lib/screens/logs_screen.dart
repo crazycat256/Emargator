@@ -77,6 +77,7 @@ class LogsScreen extends StatelessWidget {
           return Stack(
             children: [
               ListView.builder(
+                reverse: true,
                 padding: const EdgeInsets.fromLTRB(8, 8, 8, 72),
                 itemCount: logs.length,
                 itemBuilder: (context, index) {
