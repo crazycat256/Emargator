@@ -575,8 +575,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd gh-pages
+          rm -rf .git
           git init
-          git branch -D gh-pages 2>/dev/null || true
           git checkout --orphan gh-pages
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
