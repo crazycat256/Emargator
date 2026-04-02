@@ -5,9 +5,8 @@ import '../services/attendance_notification_service.dart';
 import '../services/storage_service.dart';
 import '../services/log_service.dart';
 import '../services/time_slot_service.dart';
+import '../services/app_log_service.dart';
 import '../models/attendance_log.dart';
-import '../services/error_service.dart';
-import '../models/error_report.dart';
 
 enum SSOStatus {
   disconnected(Icons.cancel, 'Déconnecté', Colors.grey),
@@ -23,14 +22,13 @@ enum SSOStatus {
 
 class AppState extends ChangeNotifier {
   final StorageService _storageService = StorageService();
+  // LogService is kept internally to support hasSignedInCurrentSlot().
   final LogService _logService = LogService();
-  final ErrorService _errorService = ErrorService();
 
   AttendanceService? _attendanceService;
   SSOStatus _ssoStatus = SSOStatus.disconnected;
   bool _isSigningAttendance = false;
   List<AttendanceLog> _logs = [];
-  List<ErrorReport> _errors = [];
   bool _hasAcceptedWarning = false;
   bool _isInitialized = false;
   Set<String> _moodleSignedKeys = {};
@@ -39,8 +37,6 @@ class AppState extends ChangeNotifier {
 
   SSOStatus get ssoStatus => _ssoStatus;
   bool get isSigningAttendance => _isSigningAttendance;
-  List<AttendanceLog> get logs => _logs;
-  List<ErrorReport> get errors => _errors;
   bool get hasCredentials => _attendanceService != null;
   bool get hasAcceptedWarning => _hasAcceptedWarning;
   bool get isInitialized => _isInitialized;
@@ -52,13 +48,14 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
-    await loadLogs();
-    await loadErrors();
+    await AppLogService.instance.load();
+    await _loadAttendanceLogs();
     await _loadMoodleCache();
     _hasAcceptedWarning = await _storageService.hasAcceptedWarning();
     // Populate SharedPreferences credential cache for background isolates
     await _storageService.ensureBackgroundCache();
     _isInitialized = true;
+    await AppLogService.info('App', 'Application initialisée');
     if (_hasAcceptedWarning) {
       await _tryAutoConnect();
     }
@@ -95,6 +92,10 @@ class AppState extends ChangeNotifier {
         finalPassword,
         onError: recordError,
       );
+      await AppLogService.info(
+        'Settings',
+        'Identifiants enregistrés pour $studentId',
+      );
       return await connectSSO();
     } catch (e, stackTrace) {
       await recordError('AppState.saveCredentials', e, stackTrace);
@@ -105,6 +106,7 @@ class AppState extends ChangeNotifier {
   Future<bool> connectSSO() async {
     _ssoStatus = SSOStatus.connecting;
     notifyListeners();
+    await AppLogService.info('SSO', 'Tentative de connexion SSO...');
 
     try {
       if (_attendanceService == null) {
@@ -115,6 +117,7 @@ class AppState extends ChangeNotifier {
             studentId.isEmpty ||
             password.isEmpty) {
           _ssoStatus = SSOStatus.disconnected;
+          await AppLogService.warning('SSO', 'Identifiants manquants');
           notifyListeners();
           return false;
         }
@@ -130,7 +133,13 @@ class AppState extends ChangeNotifier {
           ? SSOStatus.connected
           : SSOStatus.error;
       if (loginResult == LoginResult.success) {
+        await AppLogService.success('SSO', 'Connexion SSO réussie');
         fetchMoodleAttendance(); // fire-and-forget
+      } else {
+        await AppLogService.error(
+          'SSO',
+          'Échec de connexion SSO : ${loginResult.name}',
+        );
       }
       notifyListeners();
       return loginResult == LoginResult.success;
@@ -150,21 +159,26 @@ class AppState extends ChangeNotifier {
     _isSigningAttendance = true;
     notifyListeners();
 
+    await AppLogService.info('Émargement', 'Tentative d\'émargement...');
     try {
       final result = await _attendanceService!.signAttendance();
 
+      // Keep AttendanceLog for hasSignedInCurrentSlot() logic.
       final log = AttendanceLog(
         timestamp: DateTime.now(),
         result: result.name,
         message: result.message,
       );
       await _logService.addLog(log);
-      await loadLogs();
+      await _loadAttendanceLogs();
 
       if (result == AttendanceResult.success ||
           result == AttendanceResult.alreadySignedIn) {
+        await AppLogService.success('Émargement', result.message);
         await AttendanceNotificationService.cancelCurrentSlotNotifications();
-        fetchMoodleAttendance(); // refresh Moodle data
+        fetchMoodleAttendance(); // fire-and-forget
+      } else {
+        await AppLogService.error('Émargement', result.message);
       }
 
       return result;
@@ -176,7 +190,7 @@ class AppState extends ChangeNotifier {
       );
       await _logService.addLog(log);
       await recordError('AppState.signAttendance', e, stackTrace);
-      await loadLogs();
+      await _loadAttendanceLogs();
       return AttendanceResult.unknownError;
     } finally {
       _isSigningAttendance = false;
@@ -184,13 +198,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> loadLogs() async {
+  Future<void> _loadAttendanceLogs() async {
     _logs = await _logService.getLogs();
-    notifyListeners();
-  }
-
-  Future<void> loadErrors() async {
-    _errors = await _errorService.getErrors();
     notifyListeners();
   }
 
@@ -199,18 +208,17 @@ class AppState extends ChangeNotifier {
     Object error,
     StackTrace? stackTrace,
   ) async {
-    await _errorService.logError(contextName, error, stackTrace);
-    await loadErrors();
-  }
-
-  Future<void> clearErrors() async {
-    await _errorService.clearErrors();
-    await loadErrors();
+    await AppLogService.error(
+      contextName,
+      error.toString(),
+      details: stackTrace?.toString(),
+    );
   }
 
   Future<void> clearLogs() async {
     await _logService.clearLogs();
-    await loadLogs();
+    await AppLogService.instance.clear();
+    await _loadAttendanceLogs();
   }
 
   bool hasSignedInCurrentSlot() {
@@ -232,16 +240,29 @@ class AppState extends ChangeNotifier {
     });
   }
 
-  /// Check whether a time slot on a given date was self-recorded on Moodle.
+  bool isSlotSignedLocally(DateTime day, TimeSlot slot) {
+    final slotStart = slot.getStartTime(day);
+    final slotEnd = slot.getEndTime(day);
+    return _logs.any((log) {
+      final inRange =
+          !log.timestamp.isBefore(slotStart) && !log.timestamp.isAfter(slotEnd);
+      return inRange &&
+          (log.result == 'success' || log.result == 'alreadySignedIn');
+    });
+  }
+
   bool isSlotSignedOnMoodle(DateTime date, TimeSlot slot) {
     final key =
         '${date.year}-${date.month}-${date.day}_${slot.startHour}:${slot.startMinute}';
     return _moodleSignedKeys.contains(key);
   }
 
-  /// Fetch the list of self-recorded attendance sessions from Moodle.
   Future<void> fetchMoodleAttendance() async {
     if (_attendanceService == null) return;
+    await AppLogService.info(
+      'Moodle',
+      'Récupération des émargements Moodle...',
+    );
     try {
       final sessions = await _attendanceService!.fetchSignedSessions();
       _moodleSignedKeys = sessions.map((s) => s.key).toSet();
@@ -256,6 +277,10 @@ class AppState extends ChangeNotifier {
       }
       _moodleDataLoaded = true;
       await _saveMoodleCache();
+      await AppLogService.success(
+        'Moodle',
+        '${sessions.length} émargement(s) récupéré(s)',
+      );
       notifyListeners();
     } catch (e, stackTrace) {
       await recordError('AppState.fetchMoodleAttendance', e, stackTrace);
@@ -284,6 +309,7 @@ class AppState extends ChangeNotifier {
     await _storageService.clearCredentials();
     _attendanceService = null;
     _ssoStatus = SSOStatus.disconnected;
+    await AppLogService.info('Settings', 'Identifiants supprimés');
     notifyListeners();
   }
 

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'warning_details_screen.dart';
-import 'errors_screen.dart';
+import 'logs_screen.dart';
 
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
@@ -66,14 +66,15 @@ class _AboutScreenState extends State<AboutScreen> {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.bug_report, color: Colors.orange),
-            title: const Text('Erreurs'),
+            leading: const Icon(
+              Icons.receipt_long_outlined,
+              color: Colors.blue,
+            ),
+            title: const Text('Logs'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const ErrorsScreen(),
-                ),
+                MaterialPageRoute(builder: (context) => const LogsScreen()),
               );
             },
           ),

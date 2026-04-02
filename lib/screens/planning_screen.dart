@@ -415,14 +415,7 @@ class _PlanningScreenState extends State<PlanningScreen> {
   }
 
   static bool _isSlotSigned(DateTime day, TimeSlot slot, AppState appState) {
-    final slotStart = slot.getStartTime(day);
-    final slotEnd = slot.getEndTime(day);
-    final localSigned = appState.logs.any((log) {
-      final inRange =
-          !log.timestamp.isBefore(slotStart) && !log.timestamp.isAfter(slotEnd);
-      return inRange &&
-          (log.result == 'success' || log.result == 'alreadySignedIn');
-    });
+    final localSigned = appState.isSlotSignedLocally(day, slot);
     if (localSigned) return true;
     return appState.isSlotSignedOnMoodle(day, slot);
   }

@@ -7,6 +7,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import '../services/time_slot_service.dart';
 import '../services/background_sync_service.dart';
+import '../services/app_log_service.dart';
 import 'planning_prefs_service.dart';
 
 /// Action identifiers for notification buttons.
@@ -135,7 +136,7 @@ class AttendanceNotificationService {
     }
 
     _initialized = true;
-    debugPrint('AttendanceNotif: initialized');
+    await AppLogService.info('Notif', 'Service de notifications initialisé');
   }
 
   /// Handle notification tap / action button tap.
@@ -202,17 +203,14 @@ class AttendanceNotificationService {
       return;
     }
 
-    // Cancel previous notifications — try cancelAll first, fall back to individual cancel
     await _cancelPrevious();
-
-    // Clear tracked IDs
     _scheduledIds.clear();
 
     int id = 0;
     final now = DateTime.now();
-    debugPrint(
-      'AttendanceNotif: scheduling for ${slotsToAttend.length} slots '
-      '(${signedSlotKeys.length} signed)',
+    await AppLogService.debug(
+      'Notif',
+      'Planification pour ${slotsToAttend.length} créneau(x), ${signedSlotKeys.length} déjà émargé(s)',
     );
 
     final notifTimings = _buildNotifTimings(notificationRules);
@@ -268,16 +266,20 @@ class AttendanceNotificationService {
           _scheduledSlotByNotifId[id] = slotKey;
           slotNotifIds.add(id);
           slotNotifTimes.add(notifTime);
+          await AppLogService.debug(
+            'Notif',
+            'Notification #$id planifiée à ${notifTime.toIso8601String().substring(0, 19)} pour $slotKey',
+          );
           id++;
         } catch (e) {
-          debugPrint('AttendanceNotif: failed to schedule id=$id: $e');
+          await AppLogService.warning(
+            'Notif',
+            'Échec planification #$id pour $slotKey : $e',
+          );
           id++;
         }
       }
 
-      // Schedule one pre-check alarm ~30 s before each notification.
-      // If the slot is already signed on Moodle, the alarm callback cancels
-      // all remaining natively-scheduled notifications for this slot.
       if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
         for (int index = 0; index < slotNotifIds.length; index++) {
           final notifId = slotNotifIds[index];
@@ -299,19 +301,22 @@ class AttendanceNotificationService {
               params: {'slotKey': slotKey, 'notifIds': slotNotifIds},
             );
             _scheduledAlarmByNotifId[notifId] = alarmId;
-            debugPrint(
-              'AttendanceNotif: pre-check alarm $alarmId at $finalAlarmTime for notif $notifId ($slotKey)',
+            await AppLogService.debug(
+              'Notif',
+              'Vérification Moodle pré-notif planifiée à ${finalAlarmTime.toIso8601String().substring(0, 19)} (notif #$notifId, $slotKey)',
             );
           } catch (e) {
-            debugPrint(
-              'AttendanceNotif: failed to schedule pre-check alarm $alarmId: $e',
+            await AppLogService.warning(
+              'Notif',
+              'Échec alarme pré-notif #$alarmId : $e',
             );
           }
         }
       }
     }
-    debugPrint(
-      'AttendanceNotif: scheduled ${_scheduledIds.length} notifications',
+    await AppLogService.info(
+      'Notif',
+      '${_scheduledIds.length} notification(s) planifiée(s)',
     );
   }
 
@@ -321,14 +326,12 @@ class AttendanceNotificationService {
       DesktopNotificationService.cancelAll();
     }
 
-    // Cancel any already-shown or natively-scheduled notifications
     try {
       await _plugin.cancelAll();
     } catch (e) {
-      debugPrint('AttendanceNotif: cancelAll notifications failed: $e');
+      await AppLogService.warning('Notif', 'cancelAll échoué : $e');
     }
 
-    // Cancel all pre-check alarms (Android)
     if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
       for (final alarmId in _scheduledAlarmByNotifId.values) {
         try {
@@ -340,7 +343,6 @@ class AttendanceNotificationService {
     _scheduledIds.clear();
     _scheduledSlotByNotifId.clear();
     _scheduledAlarmByNotifId.clear();
-    debugPrint('AttendanceNotif: cancelled all previous');
   }
 
   static String? _currentSlotKeyNow() {
@@ -367,7 +369,6 @@ class AttendanceNotificationService {
         await _plugin.cancel(id);
       } catch (_) {}
 
-      // Cancel the associated pre-check alarm
       final alarmId = _scheduledAlarmByNotifId[id];
       if (alarmId != null &&
           !Platform.isWindows &&
@@ -383,8 +384,9 @@ class AttendanceNotificationService {
       _scheduledAlarmByNotifId.remove(id);
     }
 
-    debugPrint(
-      'AttendanceNotif: cancelled ${idsToCancel.length} notifications for slot $slotKey',
+    await AppLogService.info(
+      'Notif',
+      '${idsToCancel.length} notification(s) annulée(s) pour le créneau $slotKey',
     );
   }
 
@@ -406,11 +408,7 @@ class AttendanceNotificationService {
     return '${d.inMinutes} min';
   }
 
-  /// Schedule a notification.
-  /// On Android: schedules the notification natively via zonedSchedule
-  /// (guaranteed delivery via Android's own AlarmManager).  A separate
-  /// pre-check alarm is scheduled by the caller to cancel the notification
-  /// if the slot is already signed.
+  /// On Android: schedules natively via zonedSchedule, with a Moodle pre-check alarm 30 s before.
   /// On desktop: uses a Timer + live Moodle check at fire time.
   static Future<void> _scheduleNotification({
     required int id,
@@ -487,9 +485,6 @@ class AttendanceNotificationService {
       payload: payload,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
-    );
-    debugPrint(
-      'AttendanceNotif: scheduled #$id at $scheduledTime (tz=$tzTime)',
     );
   }
 }
