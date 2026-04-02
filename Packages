@@ -1,0 +1,17 @@
+Package: emargator-beta
+Version: 0.1.2+57
+Architecture: amd64
+Essential: no
+Maintainer: Victor <noreply@users.noreply.github.com>
+Installed-Size: 7000
+Conflicts: emargator
+Replaces: emargator
+Filename: ./emargator-beta_0.1.2+57_amd64.deb
+Size: 13706698
+MD5sum: 139764178717247c880f4ad355cdc5bb
+SHA1: edc4057a0402039abf5f7331618ce952d86081bd
+SHA256: 861aa11904380e759486f50ad438d986037fe982a62b3b1d4c4455752ce37a89
+Section: utils
+Priority: optional
+Description: Application pour émarger automatiquement aux cours
+
