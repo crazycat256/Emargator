@@ -14,6 +14,7 @@ class AppLogService extends ChangeNotifier {
   // Logs written from background isolates land here; merged into _prefsKey on load().
   static const _bgKey = 'app_logs_bg';
   static const _maxLogs = 2048;
+  static const _retention = Duration(days: 7);
 
   List<AppLog> _logs = [];
 
@@ -49,12 +50,19 @@ class AppLogService extends ChangeNotifier {
     if (bgLogs.isNotEmpty) {
       main = [...main, ...bgLogs]
         ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-      if (main.length > _maxLogs) main = main.sublist(0, _maxLogs);
     }
+
+    main = _purgeOld(main);
+    if (main.length > _maxLogs) main = main.sublist(0, _maxLogs);
 
     _logs = main;
     notifyListeners();
     if (bgLogs.isNotEmpty) await _persist();
+  }
+
+  static List<AppLog> _purgeOld(List<AppLog> logs) {
+    final cutoff = DateTime.now().subtract(_retention);
+    return logs.where((l) => l.timestamp.isAfter(cutoff)).toList();
   }
 
   Future<void> clear() async {
@@ -71,6 +79,7 @@ class AppLogService extends ChangeNotifier {
 
   Future<void> _add(AppLog log) async {
     _logs.insert(0, log);
+    _logs = _purgeOld(_logs);
     if (_logs.length > _maxLogs) {
       _logs.removeRange(_maxLogs, _logs.length);
     }
@@ -112,6 +121,7 @@ class AppLogService extends ChangeNotifier {
       } catch (_) {}
     }
     existing.insert(0, log);
+    existing = _purgeOld(existing);
     if (existing.length > 256) existing = existing.sublist(0, 256);
     await prefs.setString(
       _bgKey,
