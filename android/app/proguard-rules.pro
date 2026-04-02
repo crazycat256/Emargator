@@ -4,3 +4,6 @@
 
 ## Keep flutter_local_notifications receivers (scheduled notifications)
 -keep class com.dexterous.flutterlocalnotifications.** { *; }
+
+## Keep android_alarm_manager_plus components
+-keep class dev.fluttercommunity.plus.androidalarmmanager.** { *; }
