@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:isolate';
+import 'dart:ui';
 
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -123,6 +124,7 @@ class BackgroundSyncService {
   @pragma('vm:entry-point')
   static void preCheckAndCancel(int alarmId, Map<String, dynamic> params) {
     WidgetsFlutterBinding.ensureInitialized();
+    DartPluginRegistrant.ensureInitialized();
 
     final keepAlive = ReceivePort();
     _doPreCheck(alarmId, params).whenComplete(keepAlive.close);
@@ -132,12 +134,13 @@ class BackgroundSyncService {
     int alarmId,
     Map<String, dynamic> params,
   ) async {
-    await AppLogService.writeFromBackground(
-      LogLevel.debug,
-      'BackgroundSync',
-      'Alarme pré-notif déclenchée (id=$alarmId)',
-    );
     try {
+      await AppLogService.writeFromBackground(
+        LogLevel.debug,
+        'BackgroundSync',
+        'Alarme pré-notif déclenchée (id=$alarmId)',
+      );
+
       final String slotKey = params['slotKey'] as String;
       final List<int> notifIds = (params['notifIds'] as List<dynamic>)
           .cast<int>();
