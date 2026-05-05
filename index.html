@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Emargator – Dépôt APT</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    h1 { border-bottom: 2px solid #0366d6; padding-bottom: .5rem; }
+    pre { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; padding: 1rem; overflow-x: auto; }
+    code { background: #f6f8fa; padding: .15em .3em; border-radius: 4px; font-size: 0.95em; }
+    .note { background: #fff8c5; border: 1px solid #d4a72c; border-radius: 6px; padding: .75rem 1rem; margin: 1rem 0; }
+    a { color: #0366d6; }
+  </style>
+</head>
+<body>
+  <h1>Emargator – Dépôt APT</h1>
+  <p>Ce dépôt APT fournit deux paquets :</p>
+  <ul>
+    <li><strong>emargator</strong> – version stable</li>
+    <li><strong>emargator-beta</strong> – version bêta (pré-release)</li>
+  </ul>
+  <p>Les deux paquets sont en conflit : un seul peut être installé à la fois.</p>
+
+  <h2>Installation</h2>
+
+  <div id="gpg-instructions" style="display:none;">
+    <h3>1. Importer la clé GPG</h3>
+    <pre>curl -fsSL https://crazycat256.github.io/Emargator/public.key | sudo gpg --dearmor -o /usr/share/keyrings/emargator.gpg</pre>
+
+    <h3>2. Ajouter le dépôt</h3>
+    <pre>echo "deb [signed-by=/usr/share/keyrings/emargator.gpg] https://crazycat256.github.io/Emargator ./" \
+  | sudo tee /etc/apt/sources.list.d/emargator.list</pre>
+  </div>
+
+  <div id="nogpg-instructions" style="display:none;">
+    <h3>1. Ajouter le dépôt</h3>
+    <pre>echo "deb [trusted=yes] https://crazycat256.github.io/Emargator ./" \
+  | sudo tee /etc/apt/sources.list.d/emargator.list</pre>
+  </div>
+
+  <h3 id="install-step-title">2. Installer</h3>
+  <pre>sudo apt update
+
+# Version stable
+sudo apt install emargator
+
+# OU version bêta
+sudo apt install emargator-beta</pre>
+
+  <h3 id="update-step-title">3. Mettre à jour</h3>
+  <pre>sudo apt update && sudo apt upgrade</pre>
+
+  <div class="note">
+    <strong>Note :</strong> <code>emargator</code> et <code>emargator-beta</code> ne peuvent pas
+    être installés en même temps. L'installation de l'un supprimera automatiquement l'autre.
+  </div>
+
+  <script>
+    var hasGpg = "true" === "true";
+    if (hasGpg) {
+      document.getElementById("gpg-instructions").style.display = "block";
+      document.getElementById("install-step-title").textContent = "3. Installer";
+      document.getElementById("update-step-title").textContent = "4. Mettre à jour";
+    } else {
+      document.getElementById("nogpg-instructions").style.display = "block";
+    }
+  </script>
+</body>
+</html>
